@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#4E7248" />
+  <title>投資收益</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Noto+Sans+TC:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.13.3/umd/Recharts.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body { background: #F5EEE2; font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
+    ::-webkit-scrollbar { display: none; }
+    input, select, button { font-family: inherit; outline: none; }
+    button { cursor: pointer; border: none; background: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes load { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useCallback, useEffect, useRef } = React;
+    const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } = Recharts;
+
+    // ── Palette ────────────────────────────────────────────────────────────
+    const C = {
+      bg:"#F5EEE2", card:"#FEFAF2", dark:"#EDE4D0", border:"#DDD0B8",
+      t1:"#352820", t2:"#6E5C48", t3:"#A08870",
+      accent:"#6A9060", accentD:"#4E7248", accentL:"#B8D4A8",
+      green:"#3A7050", greenBg:"#CCE8CC",
+      red:"#A84838",   redBg:"#F5D0C8",
+      blue:"#2A5080",  blueBg:"#D0E4F4",
+      shadow:"rgba(50,35,20,.07)",
+    };
+    const PIE_COLORS = ["#6A9060","#C0A060","#3A6090","#A07040","#8A6090","#5A9090"];
+    const USD_RATE = 32;
+    const CAT_META = {
+      "美股": { color:"#2A5080", bg:"#D0E4F4", flag:"🇺🇸" },
+      "台股": { color:"#7A4A20", bg:"#F0DCC0", flag:"🇹🇼" },
+      "基金": { color:"#4E7248", bg:"#CCE8CC", flag:"📈" },
+    };
+
+    // ── Seed data ──────────────────────────────────────────────────────────
+    const SEED_US = [
+      { id:"u1",  symbol:"AAPL", qty:92.3159,  buyPrice:185.00, curPrice:259.34, buyDate:"2023-06-01" },
+      { id:"u2",  symbol:"ITB",  qty:21,        buyPrice:70.00,  curPrice:95.00,  buyDate:"2023-08-01" },
+      { id:"u3",  symbol:"VOO",  qty:54.5787,  buyPrice:470.00, curPrice:631.07, buyDate:"2023-04-01" },
+      { id:"u4",  symbol:"VTI",  qty:100.4027, buyPrice:250.00, curPrice:338.85, buyDate:"2023-03-01" },
+      { id:"u5",  symbol:"VT",   qty:68,        buyPrice:110.00, curPrice:146.70, buyDate:"2023-05-01" },
+      { id:"u6",  symbol:"QQQ",  qty:48.6279,  buyPrice:460.00, curPrice:618.43, buyDate:"2023-02-01" },
+      { id:"u7",  symbol:"TSLA", qty:22,        buyPrice:200.00, curPrice:353.29, buyDate:"2023-07-01" },
+      { id:"u8",  symbol:"ARKK", qty:52.2681,  buyPrice:55.00,  curPrice:72.31,  buyDate:"2023-09-01" },
+      { id:"u9",  symbol:"PYPL", qty:33,        buyPrice:40.00,  curPrice:47.55,  buyDate:"2024-01-01" },
+      { id:"u10", symbol:"DOCU", qty:10,        buyPrice:40.00,  curPrice:45.64,  buyDate:"2024-02-01" },
+    ];
+    const SEED_TW = [
+      { id:"t1", cat:"台股", name:"台積電 2330", qty:10,   buyPrice:680,  curPrice:920,  buyDate:"2024-03-15", cur:"TWD" },
+      { id:"t2", cat:"台股", name:"00878",        qty:2000, buyPrice:20.5, curPrice:22.3, buyDate:"2024-05-01", cur:"TWD" },
+      { id:"t3", cat:"基金", name:"野村鴻運基金",      qty:1000, buyPrice:100, curPrice:118, buyDate:"2025-06-01", cur:"TWD" },
+      { id:"t4", cat:"基金", name:"安聯台灣科技基金",   qty:800,  buyPrice:100, curPrice:128, buyDate:"2025-07-15", cur:"TWD" },
+    ];
+    const SEED_REAL = [
+      { id:"r1",  cat:"基金", name:"野村鴻運基金",         principal:190000, sellValue:235489, date:"2026-02-24" },
+      { id:"r2",  cat:"基金", name:"安聯台灣大壩基金-A類",  principal:70000,  sellValue:101164, date:"2026-02-24" },
+      { id:"r3",  cat:"基金", name:"安聯台灣科技基金",      principal:120000, sellValue:153545, date:"2026-02-24" },
+      { id:"r4",  cat:"基金", name:"統一奔騰基金",          principal:340000, sellValue:387689, date:"2026-02-24" },
+      { id:"r5",  cat:"台股", name:"台積電",               principal:75404,  sellValue:88358,  date:"2026-01-26" },
+      { id:"r6",  cat:"基金", name:"野村鴻利基金",          principal:180000, sellValue:206436, date:"2026-01-23" },
+      { id:"r7",  cat:"基金", name:"合庫台灣高科技基金",    principal:190000, sellValue:211919, date:"2026-01-20" },
+      { id:"r8",  cat:"台股", name:"元大台灣50",            principal:55188,  sellValue:64689,  date:"2026-01-16" },
+      { id:"r9",  cat:"基金", name:"復華華人世紀基金",      principal:280000, sellValue:312079, date:"2026-01-14" },
+      { id:"r10", cat:"台股", name:"元大台灣50",            principal:244604, sellValue:277925, date:"2026-01-05" },
+      { id:"r11", cat:"基金", name:"元大台灣卓越50ETF",     principal:780000, sellValue:831721, date:"2025-12-30" },
+      { id:"r12", cat:"基金", name:"合庫台灣基金-A類",      principal:160000, sellValue:172412, date:"2025-12-23" },
+    ];
+
+    // ── helpers ────────────────────────────────────────────────────────────
+    const fmt  = v => `$${Math.round(v).toLocaleString("zh-TW")}`;
+    const fmtU = v => `$${v.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+    const fmtK = v => v >= 10000 ? `$${(v/10000).toFixed(1)}萬` : fmt(v);
+    const roi  = (b,c) => b > 0 ? (c-b)/b*100 : 0;
+    const MONTHS = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+    const MN     = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+
+    // ── storage ────────────────────────────────────────────────────────────
+    const SK = { us:"ptUS", tw:"ptTW", real:"ptReal", cash:"ptCash" };
+    function dbLoad(key, fallback) {
+      try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback; }
+      catch { return fallback; }
+    }
+    function dbSave(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+    }
+
+    // ── price fetch ────────────────────────────────────────────────────────
+    async function fetchLivePrices(symbols) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 800,
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          messages: [{ role: "user", content:
+            `Search and return current US stock prices for: ${symbols.join(", ")}. Reply ONLY with a valid JSON object like {"AAPL":175.50}. No markdown, no explanation.`
+          }]
+        })
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      const text = data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+      const match = text.match(/\{[\s\S]*?\}/);
+      if (!match) throw new Error("No JSON");
+      return JSON.parse(match[0]);
+    }
+
+    // ── atoms ──────────────────────────────────────────────────────────────
+    function RoiTag({ v, size="sm" }) {
+      if (v === null || isNaN(v)) return null;
+      const up = v >= 0;
+      return <span style={{ fontSize:size==="lg"?13:11, fontWeight:700, padding:size==="lg"?"4px 12px":"3px 9px", borderRadius:20, background:up?C.greenBg:C.redBg, color:up?C.green:C.red, whiteSpace:"nowrap" }}>{up?"+":""}{v.toFixed(1)}%</span>;
+    }
+    function CatChip({ cat }) {
+      const m = CAT_META[cat] || { color:C.t2, bg:C.dark, flag:"•" };
+      return <span style={{ fontSize:10, fontWeight:600, padding:"2px 8px", borderRadius:20, background:m.bg, color:m.color }}>{m.flag} {cat}</span>;
+    }
+
+    // ── App ────────────────────────────────────────────────────────────────
+    function App() {
+      const [usStocks,  setUsRaw]  = useState(null);
+      const [twStocks,  setTwRaw]  = useState(null);
+      const [realized,  setRlRaw]  = useState(null);
+      const [cashUSD,   setCashRaw]= useState(null);
+      const [loaded,    setLoaded] = useState(false);
+      const isInit = useRef(false);
+
+      useEffect(() => {
+        if (isInit.current) return;
+        isInit.current = true;
+        setUsRaw(dbLoad(SK.us, SEED_US));
+        setTwRaw(dbLoad(SK.tw, SEED_TW));
+        setRlRaw(dbLoad(SK.real, SEED_REAL));
+        setCashRaw(dbLoad(SK.cash, 11964.85));
+        setLoaded(true);
+      }, []);
+
+      function setUsStocks(v) { const n=typeof v==="function"?v(usStocks):v; setUsRaw(n); dbSave(SK.us,n); }
+      function setTwStocks(v) { const n=typeof v==="function"?v(twStocks):v; setTwRaw(n); dbSave(SK.tw,n); }
+      function setRealized(v) { const n=typeof v==="function"?v(realized):v; setRlRaw(n); dbSave(SK.real,n); }
+      function setCashUSD(v)  { const n=typeof v==="function"?v(cashUSD):v;  setCashRaw(n); dbSave(SK.cash,n); }
+
+      const [tab,       setTab]      = useState("overview");
+      const [holdView,  setHoldView] = useState("us");
+      const [realYear,  setRealYear] = useState("2026");
+      const [realMo,    setRealMo]   = useState(null);
+      const [fetching,  setFetching] = useState(false);
+      const [fetchMsg,  setFetchMsg] = useState("");
+      const [lastUpd,   setLastUpd]  = useState(null);
+      const [modal,     setModal]    = useState(null);
+      const [editItem,  setEditItem] = useState(null);
+      const [uForm, setUForm] = useState({ symbol:"", qty:"", buyPrice:"", buyDate:"" });
+      const [tForm, setTForm] = useState({ cat:"台股", name:"", qty:"", buyPrice:"", curPrice:"", buyDate:"", cur:"TWD" });
+      const [rForm, setRForm] = useState({ cat:"基金", name:"", principal:"", sellValue:"", date:"" });
+
+      if (!loaded) return (
+        <div style={{ background:C.bg, minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
+          <div style={{ fontSize:36 }}>🌱</div>
+          <div style={{ fontSize:14, color:C.t2, fontWeight:500 }}>載入資料中…</div>
+        </div>
+      );
+
+      // ── stats ──
+      const usStats = useMemo(() => usStocks.map(s => {
+        const cost=s.buyPrice*s.qty, value=s.curPrice*s.qty;
+        return { ...s, costUSD:cost, valueUSD:value, pnlUSD:value-cost, roiPct:roi(s.buyPrice,s.curPrice) };
+      }), [usStocks]);
+
+      const usTotals = useMemo(() => {
+        const cost=usStats.reduce((s,r)=>s+r.costUSD,0), value=usStats.reduce((s,r)=>s+r.valueUSD,0);
+        return { cost, value, pnl:value-cost, roi:roi(cost,value), cash:cashUSD, total:value+cashUSD };
+      }, [usStats, cashUSD]);
+
+      const twStats = useMemo(() => twStocks.map(s => {
+        const cost=s.buyPrice*s.qty, value=s.curPrice*s.qty;
+        return { ...s, costTWD:cost, valueTWD:value, pnlTWD:value-cost, roiPct:roi(s.buyPrice,s.curPrice) };
+      }), [twStocks]);
+
+      const twTotals = useMemo(() => {
+        const cost=twStats.reduce((s,r)=>s+r.costTWD,0), value=twStats.reduce((s,r)=>s+r.valueTWD,0);
+        return { cost, value, pnl:value-cost, roi:roi(cost,value) };
+      }, [twStats]);
+
+      const realStats = useMemo(() => {
+        const pnl=realized.reduce((s,r)=>s+(r.sellValue-r.principal),0), cost=realized.reduce((s,r)=>s+r.principal,0);
+        return { pnl, cost, roi:cost>0?pnl/cost*100:0, count:realized.length };
+      }, [realized]);
+
+      const realYears = useMemo(() => [...new Set(realized.map(r=>r.date.slice(0,4)))].sort((a,b)=>b-a), [realized]);
+      const yearReal  = useMemo(() => realized.filter(r=>r.date.startsWith(realYear)), [realized,realYear]);
+      const monthData = useMemo(() => MONTHS.map((m,i) => {
+        const rows=yearReal.filter(r=>r.date.slice(5,7)===m);
+        const pnl=rows.reduce((s,r)=>s+(r.sellValue-r.principal),0), cost=rows.reduce((s,r)=>s+r.principal,0);
+        return { month:MN[i], m, pnl, cost, roi:cost>0?pnl/cost*100:0, count:rows.length };
+      }), [yearReal]);
+
+      const filtReal = useMemo(() => {
+        let b=[...realized].sort((a,b)=>b.date.localeCompare(a.date));
+        if (realMo) b=b.filter(r=>r.date.startsWith(realYear)&&r.date.slice(5,7)===realMo);
+        return b;
+      }, [realized,realMo,realYear]);
+
+      const pieData = useMemo(() => {
+        const cats={};
+        twStats.forEach(s=>{ cats[s.cat]=(cats[s.cat]||0)+s.valueTWD; });
+        return [{ name:"美股", value:usTotals.value*USD_RATE }, ...Object.entries(cats).map(([n,v])=>({ name:n, value:v }))].filter(d=>d.value>0);
+      }, [usTotals, twStats]);
+
+      // ── fetch ──
+      const handleFetch = useCallback(async () => {
+        setFetching(true); setFetchMsg("搜尋中…");
+        try {
+          const prices = await fetchLivePrices(usStocks.map(s=>s.symbol));
+          setUsStocks(p => p.map(s => { const pr=prices[s.symbol]||prices[s.symbol.toUpperCase()]; return pr?{...s,curPrice:pr}:s; }));
+          setLastUpd(new Date().toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}));
+          setFetchMsg(`✓ 已更新 ${Object.keys(prices).length} 支報價`);
+          setTimeout(()=>setFetchMsg(""),3000);
+        } catch { setFetchMsg("❌ 更新失敗"); setTimeout(()=>setFetchMsg(""),4000); }
+        setFetching(false);
+      }, [usStocks]);
+
+      // ── modal ──
+      const today = () => new Date().toISOString().slice(0,10);
+      function openAdd(t) {
+        setEditItem(null);
+        if(t==="us") setUForm({symbol:"",qty:"",buyPrice:"",buyDate:today()});
+        if(t==="tw") setTForm({cat:"台股",name:"",qty:"",buyPrice:"",curPrice:"",buyDate:today(),cur:"TWD"});
+        if(t==="real") setRForm({cat:"基金",name:"",principal:"",sellValue:"",date:today()});
+        setModal(t);
+      }
+      function openEdit(t, item) {
+        setEditItem(item);
+        if(t==="us") setUForm({symbol:item.symbol,qty:String(item.qty),buyPrice:String(item.buyPrice),buyDate:item.buyDate});
+        if(t==="tw") setTForm({cat:item.cat,name:item.name,qty:String(item.qty),buyPrice:String(item.buyPrice),curPrice:String(item.curPrice),buyDate:item.buyDate,cur:item.cur});
+        if(t==="real") setRForm({cat:item.cat,name:item.name,principal:String(item.principal),sellValue:String(item.sellValue),date:item.date});
+        setModal(t);
+      }
+      function saveUS() {
+        if(!uForm.symbol||!uForm.qty||!uForm.buyPrice) return;
+        const sym=uForm.symbol.toUpperCase().trim();
+        const e={symbol:sym,name:sym,qty:+uForm.qty,buyPrice:+uForm.buyPrice,curPrice:+uForm.buyPrice,buyDate:uForm.buyDate};
+        editItem?setUsStocks(p=>p.map(s=>s.id===editItem.id?{...e,id:s.id}:s)):setUsStocks(p=>[...p,{...e,id:"u"+Date.now()}]);
+        setModal(null);
+      }
+      function saveTW() {
+        if(!tForm.name||!tForm.qty||!tForm.buyPrice||!tForm.curPrice) return;
+        const e={...tForm,qty:+tForm.qty,buyPrice:+tForm.buyPrice,curPrice:+tForm.curPrice};
+        editItem?setTwStocks(p=>p.map(s=>s.id===editItem.id?{...e,id:s.id}:s)):setTwStocks(p=>[...p,{...e,id:"t"+Date.now()}]);
+        setModal(null);
+      }
+      function saveReal() {
+        if(!rForm.name||!rForm.principal||!rForm.sellValue||!rForm.date) return;
+        const e={...rForm,principal:+rForm.principal,sellValue:+rForm.sellValue};
+        editItem?setRealized(p=>p.map(r=>r.id===editItem.id?{...e,id:r.id}:r)):setRealized(p=>[...p,{...e,id:"r"+Date.now()}]);
+        setModal(null);
+      }
+
+      const previewReal = rForm.principal&&rForm.sellValue&&+rForm.principal>0
+        ? { pnl:+rForm.sellValue-+rForm.principal, roi:roi(+rForm.principal,+rForm.sellValue) } : null;
+
+      const BarTip = ({ active, payload }) => {
+        if(!active||!payload?.length||!payload[0].payload.count) return null;
+        const d=payload[0].payload;
+        return <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",fontSize:12}}><div style={{fontWeight:600,color:C.t1,marginBottom:3}}>{d.month}</div><div style={{color:C.green}}>損益 {fmt(d.pnl)}</div><div style={{color:C.t3,marginTop:2}}>ROI {d.roi.toFixed(1)}% · {d.count}筆</div></div>;
+      };
+
+      const R = "M PLUS Rounded 1c";
+
+      return (
+        <div style={{ fontFamily:"'Noto Sans TC',sans-serif", background:C.bg, minHeight:"100vh", maxWidth:480, margin:"0 auto", paddingBottom:88 }}>
+
+          {/* Header */}
+          <div style={{ background:C.card, borderBottom:`1px solid ${C.border}`, padding:"16px 18px 12px", position:"sticky", top:0, zIndex:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:21, color:C.t1 }}>投資收益</div>
+                <div style={{ fontSize:10, color:C.t3, letterSpacing:1.2, marginTop:1 }}>PORTFOLIO TRACKER</div>
+              </div>
+              <div style={{ display:"flex", gap:7 }}>
+                <button onClick={()=>openAdd("tw")} style={{ fontSize:11, color:C.t2, background:C.dark, borderRadius:16, padding:"5px 10px", fontWeight:500, border:`1px solid ${C.border}` }}>台灣 +</button>
+                <button onClick={()=>openAdd("us")} style={{ fontSize:11, color:C.blue, background:C.blueBg, borderRadius:16, padding:"5px 10px", fontWeight:600 }}>美股 +</button>
+                <button onClick={()=>openAdd("real")} style={{ fontSize:11, color:"#fff", background:C.accent, borderRadius:16, padding:"5px 10px", fontWeight:600 }}>月報 +</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display:"flex", background:C.card, borderBottom:`1px solid ${C.border}` }}>
+            {[["overview","總覽"],["hold","持倉"],["realized","已實現"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setTab(k)} style={{ flex:1, padding:"10px 0", fontSize:12, fontWeight:500, color:tab===k?C.accentD:C.t3, borderBottom:tab===k?`2.5px solid ${C.accent}`:"2.5px solid transparent", transition:"all .2s" }}>{l}</button>
+            ))}
+          </div>
+
+          {/* ══ OVERVIEW ══ */}
+          {tab==="overview" && (
+            <div style={{ padding:"14px 14px 0" }}>
+              {/* Hero */}
+              <div style={{ background:C.accentD, borderRadius:20, padding:"20px 18px", marginBottom:12 }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,.6)", letterSpacing:1.3, marginBottom:4 }}>總資產（美股 + 台灣持倉）</div>
+                <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:30, color:"#fff", marginBottom:2 }}>
+                  {fmtK(usTotals.total*USD_RATE + twTotals.value)}
+                  <span style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginLeft:6 }}>TWD</span>
+                </div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginBottom:14 }}>美股 {fmtU(usTotals.total)} USD</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                  {[["美股未實現",(usTotals.pnl>=0?"+":"")+fmtU(usTotals.pnl),usTotals.pnl>=0?"#C8F0D0":"#FFD0C8"],["台灣未實現",(twTotals.pnl>=0?"+":"")+fmtK(twTotals.pnl),twTotals.pnl>=0?"#C8F0D0":"#FFD0C8"],["已實現獲利","+"+fmtK(realStats.pnl),"#EEE8D0"]].map(([l,v,col])=>(
+                    <div key={l}><div style={{ fontSize:10, color:"rgba(255,255,255,.5)", marginBottom:2 }}>{l}</div><div style={{ fontSize:12, color:col, fontWeight:600 }}>{v}</div></div>
+                  ))}
+                </div>
+              </div>
+
+              {/* US account */}
+              <div style={{ background:C.card, borderRadius:14, padding:"12px 14px", marginBottom:12, border:`1px solid ${C.border}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:12, color:C.t2, fontWeight:600 }}>🇺🇸 美股帳戶</div>
+                  <RoiTag v={usTotals.roi} size="lg"/>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                  {[["持倉市值",fmtU(usTotals.value)],["現金",fmtU(usTotals.cash)],["帳戶總值",fmtU(usTotals.total)]].map(([l,v])=>(
+                    <div key={l} style={{ background:C.dark, borderRadius:10, padding:"9px 10px" }}>
+                      <div style={{ fontSize:10, color:C.t3, marginBottom:3 }}>{l}</div>
+                      <div style={{ fontSize:12, color:C.t1, fontWeight:600 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pie */}
+              <div style={{ background:C.card, borderRadius:16, padding:14, marginBottom:12, border:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:12, color:C.t2, fontWeight:600, marginBottom:12 }}>資產配置</div>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <ResponsiveContainer width="45%" height={120}>
+                    <PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={32} outerRadius={52} paddingAngle={3} dataKey="value">
+                      {pieData.map((_,i)=><Cell key={i} fill={PIE_COLORS[i%PIE_COLORS.length]}/>)}
+                    </Pie></PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ flex:1 }}>
+                    {pieData.map((item,i)=>{
+                      const total=pieData.reduce((s,d)=>s+d.value,0);
+                      return (
+                        <div key={item.name} style={{ display:"flex", alignItems:"center", marginBottom:7 }}>
+                          <div style={{ width:9, height:9, borderRadius:3, background:PIE_COLORS[i%PIE_COLORS.length], marginRight:7, flexShrink:0 }}/>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:12, color:C.t1, fontWeight:500 }}>{item.name}</div>
+                            <div style={{ fontSize:10, color:C.t3 }}>{(item.value/total*100).toFixed(0)}% · {fmtK(item.value)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Top performers */}
+              <div style={{ background:C.card, borderRadius:16, padding:14, marginBottom:16, border:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:12, color:C.t2, fontWeight:600, marginBottom:10 }}>持倉報酬排行</div>
+                {[...usStats.map(s=>({...s,cat:"美股",roi:s.roiPct})), ...twStats.map(s=>({...s,roi:s.roiPct}))]
+                  .sort((a,b)=>b.roi-a.roi).slice(0,6).map(h=>(
+                  <div key={h.id} style={{ display:"flex", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.dark}` }}>
+                    <div style={{ flex:1, paddingRight:8 }}>
+                      <div style={{ fontSize:13, color:C.t1, fontWeight:600 }}>{h.symbol||h.name}</div>
+                      <div style={{ marginTop:3 }}><CatChip cat={h.cat}/></div>
+                    </div>
+                    <RoiTag v={h.roi}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ HOLDINGS ══ */}
+          {tab==="hold" && (
+            <div style={{ padding:14 }}>
+              <div style={{ display:"flex", background:C.dark, borderRadius:12, padding:4, marginBottom:14 }}>
+                {[["us","🇺🇸 美股"],["tw","🇹🇼 台灣 & 基金"]].map(([k,l])=>(
+                  <button key={k} onClick={()=>setHoldView(k)} style={{ flex:1, padding:"8px 0", borderRadius:9, fontSize:12, fontWeight:600, background:holdView===k?C.card:"transparent", color:holdView===k?C.t1:C.t3, boxShadow:holdView===k?`0 1px 4px ${C.shadow}`:"none", transition:"all .2s" }}>{l}</button>
+                ))}
+              </div>
+
+              {holdView==="us" && <>
+                <div style={{ background:C.card, borderRadius:14, padding:"12px 14px", marginBottom:12, border:`1px solid ${C.border}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:C.t3 }}>帳戶市值</div>
+                      <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:26, color:C.t1 }}>{fmtU(usTotals.total)}</div>
+                      <div style={{ fontSize:11, color:usTotals.pnl>=0?C.green:C.red, fontWeight:600, marginTop:2 }}>
+                        {usTotals.pnl>=0?"+":""}{fmtU(usTotals.pnl)} ({usTotals.roi>=0?"+":""}{usTotals.roi.toFixed(2)}%)
+                      </div>
+                    </div>
+                    <button onClick={handleFetch} disabled={fetching} style={{ background:fetching?C.dark:C.blueBg, color:fetching?C.t3:C.blue, borderRadius:20, padding:"8px 14px", fontSize:12, fontWeight:600, border:`1.5px solid ${fetching?C.border:C.blue+"44"}`, display:"flex", alignItems:"center", gap:6, minWidth:90, justifyContent:"center" }}>
+                      <span style={{ display:"inline-block", animation:fetching?"spin 1s linear infinite":"none" }}>↻</span>
+                      {fetching?"更新中…":"更新報價"}
+                    </button>
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"space-between" }}>
+                    <div style={{ fontSize:11, color:C.t3 }}>現金 {fmtU(cashUSD)} · {usStocks.length} 支</div>
+                    {fetchMsg && <div style={{ fontSize:11, color:fetchMsg.startsWith("✓")?C.green:C.red, fontWeight:500 }}>{fetchMsg}</div>}
+                    {!fetchMsg && lastUpd && <div style={{ fontSize:10, color:C.t3 }}>更新 {lastUpd}</div>}
+                  </div>
+                </div>
+
+                {[...usStats].sort((a,b)=>b.valueUSD-a.valueUSD).map(s=>(
+                  <div key={s.id} style={{ background:C.card, borderRadius:14, padding:"12px 14px", marginBottom:10, border:`1px solid ${C.border}`, boxShadow:`0 1px 5px ${C.shadow}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                      <div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:20, color:C.t1 }}>{s.symbol}</div>
+                          <RoiTag v={s.roiPct}/>
+                        </div>
+                        <div style={{ fontSize:11, color:C.t3, marginTop:2 }}>買入 {s.buyDate} · {s.qty.toLocaleString()} 股</div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:18, color:C.t1 }}>{fmtU(s.valueUSD)}</div>
+                        <div style={{ fontSize:11, color:s.pnlUSD>=0?C.green:C.red, fontWeight:600, marginTop:2 }}>{s.pnlUSD>=0?"+":""}{fmtU(s.pnlUSD)}</div>
+                      </div>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", background:C.dark, borderRadius:10, padding:"9px 10px", marginBottom:10, gap:4 }}>
+                      {[["買入均價",fmtU(s.buyPrice)],["現價",fmtU(s.curPrice)],["市值TWD",fmtK(s.valueUSD*USD_RATE)]].map(([l,v])=>(
+                        <div key={l}><div style={{ fontSize:10, color:C.t3, marginBottom:2 }}>{l}</div><div style={{ fontSize:12, color:C.t1, fontWeight:500 }}>{v}</div></div>
+                      ))}
+                    </div>
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.t3, marginBottom:4 }}>
+                        <span>成本 {fmtU(s.costUSD)}</span><span>{s.roiPct>=0?"+":""}{s.roiPct.toFixed(1)}%</span>
+                      </div>
+                      <div style={{ background:C.dark, borderRadius:4, height:5, overflow:"hidden" }}>
+                        <div style={{ width:`${Math.min(Math.abs(s.roiPct)*1.5,100)}%`, height:"100%", background:s.roiPct>=0?C.green:C.red, borderRadius:4, transition:"width .6s ease" }}/>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                      <button onClick={()=>openEdit("us",s)} style={{ fontSize:11, color:C.t2, background:C.dark, borderRadius:8, padding:"4px 12px", fontWeight:500 }}>編輯</button>
+                      <button onClick={()=>setUsStocks(p=>p.filter(x=>x.id!==s.id))} style={{ fontSize:11, color:C.red, background:C.redBg, borderRadius:8, padding:"4px 12px", fontWeight:500 }}>刪除</button>
+                    </div>
+                  </div>
+                ))}
+              </>}
+
+              {holdView==="tw" && <>
+                <div style={{ background:C.dark, borderRadius:12, padding:"11px 14px", marginBottom:12, display:"flex", justifyContent:"space-between" }}>
+                  <div><div style={{ fontSize:11, color:C.t3 }}>台灣持倉市值</div><div style={{ fontFamily:`'${R}',sans-serif`, fontSize:20, color:C.t1, marginTop:3 }}>{fmtK(twTotals.value)}</div></div>
+                  <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:C.t3 }}>未實現損益</div><div style={{ fontFamily:`'${R}',sans-serif`, fontSize:20, color:twTotals.pnl>=0?C.green:C.red, marginTop:3 }}>{twTotals.pnl>=0?"+":""}{fmtK(twTotals.pnl)}</div></div>
+                </div>
+                {twStats.map(s=>(
+                  <div key={s.id} style={{ background:C.card, borderRadius:14, padding:"12px 14px", marginBottom:10, border:`1px solid ${C.border}`, boxShadow:`0 1px 5px ${C.shadow}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                      <div style={{ flex:1, paddingRight:8 }}>
+                        <div style={{ fontSize:14, color:C.t1, fontWeight:600 }}>{s.name}</div>
+                        <div style={{ display:"flex", gap:6, marginTop:4 }}><CatChip cat={s.cat}/><span style={{ fontSize:10, color:C.t3 }}>買入 {s.buyDate}</span></div>
+                      </div>
+                      <RoiTag v={s.roiPct}/>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", background:C.dark, borderRadius:10, padding:"9px 10px", marginBottom:10, gap:4 }}>
+                      {[["買入價",s.buyPrice.toLocaleString()],["現價",s.curPrice.toLocaleString()],["數量",s.qty.toLocaleString()],["損益",(s.pnlTWD>=0?"+":"")+fmtK(Math.abs(s.pnlTWD))]].map(([l,v],i)=>(
+                        <div key={l}><div style={{ fontSize:10, color:C.t3, marginBottom:2 }}>{l}</div><div style={{ fontSize:11, color:i===3?(s.pnlTWD>=0?C.green:C.red):C.t1, fontWeight:i===3?700:500 }}>{v}</div></div>
+                      ))}
+                    </div>
+                    <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                      <button onClick={()=>openEdit("tw",s)} style={{ fontSize:11, color:C.t2, background:C.dark, borderRadius:8, padding:"4px 12px", fontWeight:500 }}>編輯</button>
+                      <button onClick={()=>setTwStocks(p=>p.filter(x=>x.id!==s.id))} style={{ fontSize:11, color:C.red, background:C.redBg, borderRadius:8, padding:"4px 12px", fontWeight:500 }}>刪除</button>
+                    </div>
+                  </div>
+                ))}
+              </>}
+            </div>
+          )}
+
+          {/* ══ REALIZED ══ */}
+          {tab==="realized" && (
+            <div style={{ padding:14 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                <div style={{ fontSize:13, color:C.t1, fontWeight:600 }}>年度月報</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  {realYears.map(y=>(
+                    <button key={y} onClick={()=>{setRealYear(y);setRealMo(null)}} style={{ padding:"5px 14px", borderRadius:50, fontSize:12, fontWeight:500, background:realYear===y?C.accent:C.card, color:realYear===y?"#fff":C.t2, border:`1px solid ${realYear===y?C.accent:C.border}` }}>{y}</button>
+                  ))}
+                </div>
+              </div>
+
+              {(()=>{
+                const pnl=yearReal.reduce((s,r)=>s+(r.sellValue-r.principal),0), cost=yearReal.reduce((s,r)=>s+r.principal,0);
+                return (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                    <div style={{ background:C.card, borderRadius:14, padding:14, border:`1px solid ${C.border}` }}>
+                      <div style={{ fontSize:11, color:C.t3, marginBottom:6 }}>{realYear} 年度損益</div>
+                      <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:22, color:C.green }}>{fmt(pnl)}</div>
+                      <div style={{ fontSize:11, color:C.t3, marginTop:3 }}>{yearReal.length} 筆交易</div>
+                    </div>
+                    <div style={{ background:C.card, borderRadius:14, padding:14, border:`1px solid ${C.border}` }}>
+                      <div style={{ fontSize:11, color:C.t3, marginBottom:6 }}>年度平均投報率</div>
+                      <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:22, color:C.t1 }}>+{cost>0?(pnl/cost*100).toFixed(1):0}%</div>
+                      <div style={{ fontSize:11, color:C.t3, marginTop:3 }}>投入 {fmtK(cost)}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{ background:C.card, borderRadius:16, padding:"14px 10px 12px", marginBottom:12, border:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:12, color:C.t2, fontWeight:600, marginBottom:12, paddingLeft:6 }}>月度損益</div>
+                <ResponsiveContainer width="100%" height={145}>
+                  <BarChart data={monthData} margin={{ left:-18, right:4, top:4, bottom:0 }} barSize={15}>
+                    <XAxis dataKey="month" tick={{ fontSize:10, fill:C.t3 }} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{ fontSize:9, fill:C.t3 }} axisLine={false} tickLine={false} tickFormatter={v=>v===0?"0":`${(v/10000).toFixed(0)}萬`}/>
+                    <Tooltip content={<BarTip/>} cursor={{ fill:"rgba(106,144,96,.08)" }}/>
+                    <Bar dataKey="pnl" fill={C.accent} radius={[5,5,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:12, marginBottom:4 }}>
+                <button onClick={()=>setRealMo(null)} style={{ flexShrink:0, padding:"5px 14px", borderRadius:50, fontSize:11, fontWeight:500, background:!realMo?C.accent:C.card, color:!realMo?"#fff":C.t2, border:`1px solid ${!realMo?C.accent:C.border}` }}>全部</button>
+                {MONTHS.filter(m=>yearReal.some(r=>r.date.slice(5,7)===m)).map(m=>(
+                  <button key={m} onClick={()=>setRealMo(m)} style={{ flexShrink:0, padding:"5px 14px", borderRadius:50, fontSize:11, fontWeight:500, background:realMo===m?C.accent:C.card, color:realMo===m?"#fff":C.t2, border:`1px solid ${realMo===m?C.accent:C.border}` }}>{+m}月</button>
+                ))}
+              </div>
+
+              {filtReal.map(r=>{
+                const p=r.sellValue-r.principal, rt=r.principal>0?p/r.principal*100:0;
+                return (
+                  <div key={r.id} style={{ background:C.card, borderRadius:14, padding:"12px 14px", marginBottom:10, border:`1px solid ${C.border}`, boxShadow:`0 1px 5px ${C.shadow}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                      <div style={{ flex:1, paddingRight:8 }}>
+                        <div style={{ fontSize:14, color:C.t1, fontWeight:600 }}>{r.name}</div>
+                        <div style={{ display:"flex", gap:6, marginTop:4 }}><CatChip cat={r.cat}/><span style={{ fontSize:10, color:C.t3 }}>結算 {r.date}</span></div>
+                      </div>
+                      <RoiTag v={rt}/>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", background:C.dark, borderRadius:10, padding:"9px 10px", marginBottom:10, gap:4 }}>
+                      {[["投入本金",fmt(r.principal)],["賣出市值",fmt(r.sellValue)],["損益",(p>=0?"+":"")+fmt(p)]].map(([l,v],i)=>(
+                        <div key={l}><div style={{ fontSize:10, color:C.t3, marginBottom:2 }}>{l}</div><div style={{ fontSize:11, fontWeight:i===2?700:500, color:i===2?(p>=0?C.green:C.red):C.t1 }}>{v}</div></div>
+                      ))}
+                    </div>
+                    <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                      <button onClick={()=>openEdit("real",r)} style={{ fontSize:11, color:C.t2, background:C.dark, borderRadius:8, padding:"4px 12px", fontWeight:500 }}>編輯</button>
+                      <button onClick={()=>setRealized(p=>p.filter(x=>x.id!==r.id))} style={{ fontSize:11, color:C.red, background:C.redBg, borderRadius:8, padding:"4px 12px", fontWeight:500 }}>刪除</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Bottom Nav */}
+          <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:480, background:C.card, borderTop:`1px solid ${C.border}`, display:"flex", padding:"10px 0 22px", zIndex:20 }}>
+            {[["overview","🏠","總覽"],["hold","💼","持倉"],["realized","📊","月報"]].map(([k,icon,l])=>(
+              <button key={k} onClick={()=>setTab(k)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, color:tab===k?C.accentD:C.t3, fontSize:10, fontWeight:tab===k?600:400 }}>
+                <span style={{ fontSize:22 }}>{icon}</span>{l}
+              </button>
+            ))}
+          </div>
+
+          {/* Modal */}
+          {modal && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", display:"flex", alignItems:"flex-end", zIndex:100, backdropFilter:"blur(5px)" }} onClick={e=>{ if(e.target===e.currentTarget)setModal(null); }}>
+              <div style={{ background:C.card, borderRadius:"22px 22px 0 0", width:"100%", maxWidth:480, margin:"0 auto", padding:"22px 18px 36px", maxHeight:"92vh", overflowY:"auto" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+                  <div style={{ fontFamily:`'${R}',sans-serif`, fontSize:20, color:C.t1 }}>
+                    {modal==="us"?(editItem?"編輯美股":"新增美股 🇺🇸"):modal==="tw"?(editItem?"編輯台灣持倉":"新增台灣持倉 🇹🇼"):(editItem?"編輯已實現":"新增已實現 📊")}
+                  </div>
+                  <button onClick={()=>setModal(null)} style={{ fontSize:26, color:C.t3 }}>×</button>
+                </div>
+
+                {modal==="us" && <>
+                  <div style={{ background:C.blueBg, borderRadius:12, padding:"10px 14px", marginBottom:16, fontSize:12, color:C.blue }}>💡 新增後點「更新報價」自動取得即時價格</div>
+                  {[{k:"symbol",l:"股票代號",ph:"NVDA",t:"text",up:true},{k:"qty",l:"持股數量",ph:"92.3159",t:"number"},{k:"buyPrice",l:"買入均價 (USD)",ph:"495.00",t:"number"},{k:"buyDate",l:"買入日期",ph:"",t:"date"}].map(({k,l,ph,t,up})=>(
+                    <div key={k} style={{ marginBottom:13 }}>
+                      <label style={{ fontSize:12, color:C.t2, fontWeight:500, display:"block", marginBottom:5 }}>{l}</label>
+                      <input type={t} value={uForm[k]} onChange={e=>setUForm(f=>({...f,[k]:up?e.target.value.toUpperCase():e.target.value}))} placeholder={ph}
+                        style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg, fontSize:14, color:C.t1 }}/>
+                    </div>
+                  ))}
+                  <button onClick={saveUS} style={{ width:"100%", background:C.blue, color:"#fff", borderRadius:14, padding:"13px", fontSize:14, fontWeight:600 }}>{editItem?"儲存修改":"新增持倉"}</button>
+                </>}
+
+                {modal==="tw" && <>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:13 }}>
+                    {[{l:"類別",k:"cat",opts:["台股","基金"]},{l:"幣別",k:"cur",opts:["TWD","USD"]}].map(({l,k,opts})=>(
+                      <div key={k}>
+                        <label style={{ fontSize:12, color:C.t2, fontWeight:500, display:"block", marginBottom:5 }}>{l}</label>
+                        <select value={tForm[k]} onChange={e=>setTForm(f=>({...f,[k]:e.target.value}))} style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg, fontSize:13, color:C.t1 }}>
+                          {opts.map(o=><option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  {[{k:"name",l:"標的名稱",ph:"台積電 2330"},{k:"buyPrice",l:"買入均價",ph:"680",t:"number"},{k:"curPrice",l:"現在價格",ph:"920",t:"number"},{k:"qty",l:"數量",ph:"10",t:"number"},{k:"buyDate",l:"買入日期",ph:"",t:"date"}].map(({k,l,ph,t="text"})=>(
+                    <div key={k} style={{ marginBottom:13 }}>
+                      <label style={{ fontSize:12, color:C.t2, fontWeight:500, display:"block", marginBottom:5 }}>{l}</label>
+                      <input type={t} value={tForm[k]} onChange={e=>setTForm(f=>({...f,[k]:e.target.value}))} placeholder={ph}
+                        style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg, fontSize:14, color:C.t1 }}/>
+                    </div>
+                  ))}
+                  {tForm.buyPrice&&tForm.curPrice&&+tForm.buyPrice>0&&(
+                    <div style={{ background:C.dark, borderRadius:12, padding:"10px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontSize:12, color:C.t3 }}>投報率預覽</span><RoiTag v={roi(+tForm.buyPrice,+tForm.curPrice)} size="lg"/>
+                    </div>
+                  )}
+                  <button onClick={saveTW} style={{ width:"100%", background:C.accentD, color:"#fff", borderRadius:14, padding:"13px", fontSize:14, fontWeight:600 }}>{editItem?"儲存修改":"新增持倉"}</button>
+                </>}
+
+                {modal==="real" && <>
+                  <div style={{ marginBottom:13 }}>
+                    <label style={{ fontSize:12, color:C.t2, fontWeight:500, display:"block", marginBottom:5 }}>類別</label>
+                    <select value={rForm.cat} onChange={e=>setRForm(f=>({...f,cat:e.target.value}))} style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg, fontSize:13, color:C.t1 }}>
+                      {["基金","台股","美股"].map(o=><option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  {[{k:"name",l:"標的名稱",ph:"野村鴻運基金"},{k:"principal",l:"投入本金 (NT$)",ph:"190000",t:"number"},{k:"sellValue",l:"賣出市值 (NT$)",ph:"235489",t:"number"},{k:"date",l:"結算日期",ph:"",t:"date"}].map(({k,l,ph,t="text"})=>(
+                    <div key={k} style={{ marginBottom:13 }}>
+                      <label style={{ fontSize:12, color:C.t2, fontWeight:500, display:"block", marginBottom:5 }}>{l}</label>
+                      <input type={t} value={rForm[k]} onChange={e=>setRForm(f=>({...f,[k]:e.target.value}))} placeholder={ph}
+                        style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, background:C.bg, fontSize:14, color:C.t1 }}/>
+                    </div>
+                  ))}
+                  {previewReal&&(
+                    <div style={{ background:C.dark, borderRadius:12, padding:"10px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontSize:12, color:C.t3 }}>損益預覽</span>
+                      <span style={{ display:"flex", gap:8, alignItems:"center" }}>
+                        <span style={{ fontSize:13, fontWeight:700, color:previewReal.pnl>=0?C.green:C.red }}>{previewReal.pnl>=0?"+":""}{fmt(previewReal.pnl)}</span>
+                        <RoiTag v={previewReal.roi}/>
+                      </span>
+                    </div>
+                  )}
+                  <button onClick={saveReal} style={{ width:"100%", background:C.accentD, color:"#fff", borderRadius:14, padding:"13px", fontSize:14, fontWeight:600 }}>{editItem?"儲存修改":"新增紀錄"}</button>
+                </>}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
