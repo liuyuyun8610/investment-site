@@ -98,42 +98,52 @@ var LSKEYS={us:"inv_us",tw:"inv_tw",rl:"inv_rl",cash:"inv_cash"};
 var lsGet= function(k,fb){try{var v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(e){return fb;}};
 var lsSet= function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
 
-// ── API helpers ────────────────────────────────────────────────────────────
-var APIBASE="https://api.anthropic.com/v1/messages";
-var MODEL  ="claude-sonnet-4-20250514";
+// ── API helpers (CORS-safe, works from GitHub Pages) ──────────────────────
 
-function callClaude(prompt,maxTok){
-  return fetch(APIBASE,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({model:MODEL,max_tokens:maxTok||800,
-      tools:[{type:"web_search_20250305",name:"web_search"}],
-      messages:[{role:"user",content:prompt}]
-    })
-  }).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
-   .then(function(d){return d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");});
-}
-
-// Fund search: returns [{name, nav, navDate, currency}]
-function apiFundSearch(keyword){
-  var prompt="搜尋台灣可購買的共同基金（含境內外基金），名稱包含「"+keyword+"」。"+
-    "回傳最多8筆，純JSON陣列格式："+
-    '[{"name":"基金全名","nav":13.56,"navDate":"2026-04-14","currency":"TWD"}]'+
-    "。nav為最新淨值（數字），currency為TWD或USD。只回傳JSON陣列，不要其他文字。";
-  return callClaude(prompt,1200).then(function(text){
-    var m=text.match(/\[[\s\S]*?\]/);
-    if(!m)throw new Error("no result");
-    var list=JSON.parse(m[0]);
-    return Array.isArray(list)?list.filter(function(f){return f.name;}):[];
-  });
-}
-
-// US stock price fetch
+// US stock prices via Yahoo Finance + corsproxy.io
 function fetchPrices(syms){
-  var prompt="Current stock prices for "+syms.join(",")+" Reply ONLY with JSON {\"AAPL\":150.25}. No markdown.";
-  return callClaude(prompt,600).then(function(text){
-    var m=text.match(/\{[^]*?\}/);
-    if(!m)throw new Error("no json");
-    return JSON.parse(m[0]);
-  });
+  var symbols=syms.join(",");
+  // corsproxy.io wraps the request to bypass CORS
+  var target="https://query1.finance.yahoo.com/v7/finance/quote?symbols="+encodeURIComponent(symbols);
+  var url="https://corsproxy.io/?"+encodeURIComponent(target);
+  return fetch(url)
+    .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+    .then(function(data){
+      var quotes=(data.quoteResponse&&data.quoteResponse.result)||[];
+      var prices={};
+      quotes.forEach(function(q){if(q.symbol&&q.regularMarketPrice)prices[q.symbol]=q.regularMarketPrice;});
+      if(!Object.keys(prices).length)throw new Error("no prices");
+      return prices;
+    });
+}
+
+// Fund search via 鉅亨網 public API (has CORS headers)
+function apiFundSearch(keyword){
+  var url="https://fund.api.cnyes.com/fund/api/v1/funds?search="+encodeURIComponent(keyword)+"&per_page=10&page=1";
+  function parseItems(data){
+    var items=(data.data&&data.data.items)||(data.items)||[];
+    return items.map(function(f){
+      var raw=f.priceDate||f.navDate||"";
+      // normalize YYYYMMDD → YYYY-MM-DD
+      var nd=(""+raw).replace(/^(\d{4})(\d{2})(\d{2})$/,"$1-$2-$3");
+      return{
+        name:     f.name||f.fundName||f.shortName||"",
+        nav:      f.nav||f.price||null,
+        navDate:  nd,
+        currency: f.currency||"TWD"
+      };
+    }).filter(function(f){return f.name;});
+  }
+  return fetch(url,{headers:{Accept:"application/json"}})
+    .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+    .then(parseItems)
+    .catch(function(){
+      // Fallback: try corsproxy if direct call fails
+      var proxyUrl="https://corsproxy.io/?"+encodeURIComponent(url);
+      return fetch(proxyUrl)
+        .then(function(r){return r.json();})
+        .then(parseItems);
+    });
 }
 
 // ── chart components ───────────────────────────────────────────────────────
@@ -145,7 +155,7 @@ function BarChart(props){
     bars.map(function(bar,i){
       var pct=Math.max(Math.abs(bar.pnl)/maxV*120,bar.pnl!==0?3:0);
       return h("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%",position:"relative"},
-        onClick:function(){if(props.onHover)props.onHover(props.onHover===bar?null:bar);}},
+        onClick:function(){if(props.onHover)props.onHover(bar.count===0?null:bar);}},
         h("div",{style:{width:"75%",height:pct,background:bar.pnl>0?ACC:bar.pnl<0?RED:DARK,borderRadius:"3px 3px 0 0",transition:"height .4s"}}),
         h("div",{style:{fontSize:9,color:T3,position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",whiteSpace:"nowrap"}},bar.month)
       );
@@ -483,7 +493,7 @@ function App(){
                 style:{width:"100%",textAlign:"left",padding:"10px 14px",borderBottom:i<fres.length-1?"1px solid "+DARK:"none",background:"transparent",display:"flex",justifyContent:"space-between",alignItems:"center"}},
                 h("div",null,
                   h("div",{style:{fontSize:13,color:T1,fontWeight:500}},f.name),
-                  h("div",{style:{fontSize:11,color:T3,marginTop:2}},f.currency||"TWD"+(f.navDate?" · 淨值日期 "+f.navDate:""))
+                h("div",{style:{fontSize:11,color:T3,marginTop:2}},(f.currency||"TWD")+(f.navDate?" · 淨值日期 "+f.navDate:""))
                 ),
                 f.nav&&h("div",{style:{textAlign:"right",flexShrink:0,marginLeft:12}},
                   h("div",{style:rnd({fontSize:15,color:ACCD,fontWeight:700})},f.nav),
