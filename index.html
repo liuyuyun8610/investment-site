@@ -51,10 +51,26 @@ const SEED_US=[
   {id:"u10",sym:"DOCU",qty:10,     bp:40,   cp:45.64, bd:"2024-02-01"},
 ];
 const SEED_TW=[
-  {id:"t1",cat:"台股",name:"台積電 2330",qty:10,  bp:680, cp:920, bd:"2024-03-15",cur:"TWD"},
-  {id:"t2",cat:"台股",name:"00878",       qty:2000,bp:20.5,cp:22.3,bd:"2024-05-01",cur:"TWD"},
-  {id:"t3",cat:"基金",name:"野村鴻運基金",    qty:1000,bp:100,cp:118,bd:"2025-06-01",cur:"TWD"},
-  {id:"t4",cat:"基金",name:"安聯台灣科技基金", qty:800, bp:100,cp:128,bd:"2025-07-15",cur:"TWD"},
+  {id:"t1", cat:"台股", name:"台積電 2330", qty:10,   bp:680,    cp:920,    bd:"2024-03-15", cur:"TWD"},
+  {id:"t2", cat:"台股", name:"00878",       qty:2000, bp:20.5,   cp:22.3,   bd:"2024-05-01", cur:"TWD"},
+  // 基金持倉（qty=1, bp=投入成本, cp=目前市值）
+  {id:"f1", cat:"基金", name:"統一黑馬基金",                                   qty:1, bp:120000, cp:154616, bd:"2024-01-01", cur:"TWD"},
+  {id:"f2", cat:"基金", name:"元大台灣卓越50ETF連結基金-新台幣(A)不配息",        qty:1, bp:180000, cp:190783, bd:"2024-01-01", cur:"TWD"},
+  {id:"f3", cat:"基金", name:"野村鴻運基金",                                    qty:1, bp:120000, cp:136005, bd:"2024-01-01", cur:"TWD"},
+  {id:"f4", cat:"基金", name:"野村e科技基金",                                   qty:1, bp:120000, cp:146387, bd:"2024-01-01", cur:"TWD"},
+  {id:"f5", cat:"基金", name:"統一大中華中小基金",                               qty:1, bp:120000, cp:158004, bd:"2024-01-01", cur:"TWD"},
+  {id:"f6", cat:"基金", name:"安聯台灣大壩基金-A類型",                           qty:1, bp:120000, cp:138268, bd:"2024-01-01", cur:"TWD"},
+  {id:"f7", cat:"基金", name:"復華神盾基金",                                    qty:1, bp:120000, cp:149268, bd:"2024-01-01", cur:"TWD"},
+  {id:"f8", cat:"基金", name:"第一金中概平衡基金",                               qty:1, bp:120000, cp:158165, bd:"2024-01-01", cur:"TWD"},
+  {id:"f9", cat:"基金", name:"富邦AI智能新趨勢多重資產型基金-A類型(新台幣)",       qty:1, bp:60000,  cp:81354,  bd:"2024-01-01", cur:"TWD"},
+  {id:"f10",cat:"基金", name:"摩根基金-JPM美國科技(美元)-A股(累計)",              qty:1, bp:220000, cp:211512, bd:"2024-01-01", cur:"TWD"},
+  {id:"f11",cat:"基金", name:"摩根投資基金-JPM環球非投資等級債券(美元)",           qty:1, bp:110000, cp:110948, bd:"2024-01-01", cur:"TWD"},
+  {id:"f12",cat:"基金", name:"安聯收益成長基金-AT累積類股(美元)",                 qty:1, bp:120000, cp:123497, bd:"2024-01-01", cur:"TWD"},
+  {id:"f13",cat:"基金", name:"安聯全球新興市場高股息基金-AM穩定月收(南非幣避險)",  qty:1, bp:60000,  cp:62874,  bd:"2024-01-01", cur:"TWD"},
+  {id:"f14",cat:"基金", name:"安聯收益成長基金-AMg7月收總收益類股(美元)",          qty:1, bp:180000, cp:180511, bd:"2024-01-01", cur:"TWD"},
+  {id:"f15",cat:"基金", name:"安聯全球高息股票基金-AMg穩定月收(美元)",             qty:1, bp:60000,  cp:63554,  bd:"2024-01-01", cur:"TWD"},
+  {id:"f16",cat:"基金", name:"貝萊德世界黃金基金A10美元(總報酬穩定配息)",          qty:1, bp:120000, cp:123361, bd:"2024-01-01", cur:"TWD"},
+  {id:"f17",cat:"基金", name:"施羅德環球基金-環球黃金(美元)A級別累積",             qty:1, bp:170000, cp:183887, bd:"2024-01-01", cur:"TWD"},
 ];
 const SEED_RL=[
   {id:"r1", cat:"基金",name:"野村鴻運基金",        p:190000,s:235489,d:"2026-02-24"},
@@ -227,7 +243,7 @@ function App(){
   function openAdd(t){setEdit(null);if(t==="us")setUf({sym:"",qty:"",bp:"",bd:tod()});else if(t==="tw")setTf({cat:"台股",name:"",qty:"",bp:"",cp:"",bd:tod(),cur:"TWD"});else setRf({cat:"基金",name:"",p:"",s:"",d:tod()});setModal(t);}
   function openEdit(t,x){setEdit(x);if(t==="us")setUf({sym:x.sym,qty:""+x.qty,bp:""+x.bp,bd:x.bd});else if(t==="tw")setTf({cat:x.cat,name:x.name,qty:""+x.qty,bp:""+x.bp,cp:""+x.cp,bd:x.bd,cur:x.cur});else setRf({cat:x.cat,name:x.name,p:""+x.p,s:""+x.s,d:x.d});setModal(t);}
   function saveUs(){if(!uf.sym||!uf.qty||!uf.bp)return;var sym=uf.sym.toUpperCase().trim();var e={sym:sym,qty:+uf.qty,bp:+uf.bp,cp:+uf.bp,bd:uf.bd};editObj?sUs(function(p){return p.map(function(x){return x.id===editObj.id?Object.assign({},e,{id:x.id}):x;});}):sUs(function(p){return p.concat([Object.assign({},e,{id:"u"+Date.now()})]);});setModal(null);}
-  function saveTw(){if(!tf.name||!tf.qty||!tf.bp||!tf.cp)return;var e=Object.assign({},tf,{qty:+tf.qty,bp:+tf.bp,cp:+tf.cp});editObj?sTw(function(p){return p.map(function(x){return x.id===editObj.id?Object.assign({},e,{id:x.id}):x;});}):sTw(function(p){return p.concat([Object.assign({},e,{id:"t"+Date.now()})]);});setModal(null);}
+  function saveTw(){if(!tf.name||!tf.bp||!tf.cp)return;var e=Object.assign({},tf,{qty:tf.cat==="基金"?1:+tf.qty,bp:+tf.bp,cp:+tf.cp});editObj?sTw(function(p){return p.map(function(x){return x.id===editObj.id?Object.assign({},e,{id:x.id}):x;});}):sTw(function(p){return p.concat([Object.assign({},e,{id:"t"+Date.now()})]);});setModal(null);}
   function saveRl(){if(!rf.name||!rf.p||!rf.s||!rf.d)return;var e=Object.assign({},rf,{p:+rf.p,s:+rf.s});editObj?sRl(function(p){return p.map(function(x){return x.id===editObj.id?Object.assign({},e,{id:x.id}):x;});}):sRl(function(p){return p.concat([Object.assign({},e,{id:"r"+Date.now()})]);});setModal(null);}
 
   // ── HEADER
@@ -341,20 +357,30 @@ function App(){
     ),
     htab==="tw"&&h("div",null,
       h("div",{style:{background:DARK,borderRadius:12,padding:"11px 14px",marginBottom:12,display:"flex",justifyContent:"space-between"}},
-        h("div",null,h("div",{style:{fontSize:11,color:T3}},"台灣持倉市值"),h("div",{style:rnd({fontSize:20,color:T1,marginTop:3})},fmtK(twT.val))),
+        h("div",null,h("div",{style:{fontSize:11,color:T3}},"台灣 & 基金市值"),h("div",{style:rnd({fontSize:20,color:T1,marginTop:3})},fmtK(twT.val))),
         h("div",{style:{textAlign:"right"}},h("div",{style:{fontSize:11,color:T3}},"未實現損益"),h("div",{style:rnd({fontSize:20,color:twT.pnl>=0?GRN:RED,marginTop:3})},(twT.pnl>=0?"+":"")+fmtK(twT.pnl)))
       ),
-      twStats.map(function(item){
+      twStats.sort(function(a,b){return b.pnl-a.pnl;}).map(function(item){
+        var isFund = item.cat==="基金";
         return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:10,border:"1px solid "+BDR}},
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},
-            h("div",{style:{flex:1,paddingRight:8}},h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),h("div",{style:{display:"flex",gap:6,marginTop:4}},h(Badge,{cat:item.cat}),h("span",{style:{fontSize:10,color:T3}},item.bd))),
+            h("div",{style:{flex:1,paddingRight:8}},
+              h("div",{style:{fontSize:13,color:T1,fontWeight:600,lineHeight:1.4}},item.name),
+              h("div",{style:{display:"flex",gap:6,marginTop:4}},h(Badge,{cat:item.cat}),h("span",{style:{fontSize:10,color:T3}},item.bd))
+            ),
             h(Tag,{val:item.roi})
           ),
-          h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",background:DARK,borderRadius:10,padding:"9px 10px",marginBottom:10,gap:4}},
-            [["買入",""+item.bp],["現價",""+item.cp],["數量",""+item.qty],["損益",(item.pnl>=0?"+":"")+fmtK(Math.abs(item.pnl))]].map(function(r,idx){
-              return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:T3,marginBottom:2}},r[0]),h("div",{style:{fontSize:11,color:idx===3?(item.pnl>=0?GRN:RED):T1,fontWeight:idx===3?700:500}},r[1]));
-            })
-          ),
+          isFund
+            ? h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",background:DARK,borderRadius:10,padding:"9px 10px",marginBottom:10,gap:4}},
+                [["投入成本",fmtK(item.bp)],["目前市值",fmtK(item.cp)],["損益",(item.pnl>=0?"+":"")+fmtK(item.pnl)]].map(function(r,idx){
+                  return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:T3,marginBottom:2}},r[0]),h("div",{style:{fontSize:12,color:idx===2?(item.pnl>=0?GRN:RED):T1,fontWeight:idx===2?700:500}},r[1]));
+                })
+              )
+            : h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",background:DARK,borderRadius:10,padding:"9px 10px",marginBottom:10,gap:4}},
+                [["買入",""+item.bp],["現價",""+item.cp],["數量",""+item.qty],["損益",(item.pnl>=0?"+":"")+fmtK(Math.abs(item.pnl))]].map(function(r,idx){
+                  return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:T3,marginBottom:2}},r[0]),h("div",{style:{fontSize:11,color:idx===3?(item.pnl>=0?GRN:RED):T1,fontWeight:idx===3?700:500}},r[1]));
+                })
+              ),
           h("div",{style:{display:"flex",justifyContent:"flex-end",gap:8}},
             h("button",{onClick:function(){openEdit("tw",item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 12px",fontWeight:500}},"編輯"),
             h("button",{onClick:function(){sTw(function(p){return p.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 12px",fontWeight:500}},"刪除")
@@ -431,13 +457,20 @@ function App(){
       ),
       modal==="tw"&&h("div",null,
         h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-          h(Sel,{label:"類別",value:tf.cat,onChange:function(v){setTf(function(f){return Object.assign({},f,{cat:v});});},options:["台股","基金"]}),
+          h(Sel,{label:"類別",value:tf.cat,onChange:function(v){setTf(function(f){return Object.assign({},f,{cat:v});});},options:["基金","台股"]}),
           h(Sel,{label:"幣別",value:tf.cur,onChange:function(v){setTf(function(f){return Object.assign({},f,{cur:v});});},options:["TWD","USD"]})
         ),
-        h(Inp,{label:"標的名稱",value:tf.name,onChange:function(v){setTf(function(f){return Object.assign({},f,{name:v});});},ph:"台積電 2330"}),
-        h(Inp,{label:"買入均價",value:tf.bp,onChange:function(v){setTf(function(f){return Object.assign({},f,{bp:v});});},type:"number",ph:"680"}),
-        h(Inp,{label:"現在價格",value:tf.cp,onChange:function(v){setTf(function(f){return Object.assign({},f,{cp:v});});},type:"number",ph:"920"}),
-        h(Inp,{label:"數量",value:tf.qty,onChange:function(v){setTf(function(f){return Object.assign({},f,{qty:v});});},type:"number",ph:"10"}),
+        h(Inp,{label:"標的名稱",value:tf.name,onChange:function(v){setTf(function(f){return Object.assign({},f,{name:v});});},ph:tf.cat==="基金"?"統一黑馬基金":"台積電 2330"}),
+        tf.cat==="基金"
+          ? h(Fragment,null,
+              h(Inp,{label:"投入成本 (TWD)",value:tf.bp,onChange:function(v){setTf(function(f){return Object.assign({},f,{bp:v});});},type:"number",ph:"120000"}),
+              h(Inp,{label:"目前市值 (TWD)",value:tf.cp,onChange:function(v){setTf(function(f){return Object.assign({},f,{cp:v});});},type:"number",ph:"154616"})
+            )
+          : h(Fragment,null,
+              h(Inp,{label:"買入均價",value:tf.bp,onChange:function(v){setTf(function(f){return Object.assign({},f,{bp:v});});},type:"number",ph:"680"}),
+              h(Inp,{label:"現在價格",value:tf.cp,onChange:function(v){setTf(function(f){return Object.assign({},f,{cp:v});});},type:"number",ph:"920"}),
+              h(Inp,{label:"數量",value:tf.qty,onChange:function(v){setTf(function(f){return Object.assign({},f,{qty:v});});},type:"number",ph:"10"})
+            ),
         h(Inp,{label:"買入日期",value:tf.bd,onChange:function(v){setTf(function(f){return Object.assign({},f,{bd:v});});},type:"date"}),
         tf.bp&&tf.cp&&+tf.bp>0&&h("div",{style:{background:DARK,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}},h("span",{style:{fontSize:12,color:T3}},"投報率預覽"),h(Tag,{val:calcR(+tf.bp,+tf.cp),large:true})),
         h("button",{onClick:saveTw,style:{width:"100%",background:ACCD,color:"#fff",borderRadius:14,padding:"13px",fontSize:14,fontWeight:600}},editObj?"儲存修改":"新增持倉")
