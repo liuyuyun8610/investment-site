@@ -88,6 +88,25 @@ var SEED_RL=[
   {id:"r13",cat:"基金",name:"安聯台灣智慧基金",      p:120000,s:146808,d:"2026-03-19"},
 ];
 
+// ── 現金資產 / 負債 seed ────────────────────────────────────────────────────
+// amount 正數 = 資產，負數 = 負債
+var SEED_CASH_ITEMS=[
+  {id:"ca1",name:"台新銀行",     cat:"銀行",  amount:500000},
+  {id:"ca2",name:"現金",         cat:"現金",  amount:30000},
+];
+var CASH_CATS=[
+  {key:"銀行",   icon:"🏦", isAsset:true },
+  {key:"現金",   icon:"💵", isAsset:true },
+  {key:"待收款", icon:"📋", isAsset:true },
+  {key:"不動產", icon:"🏠", isAsset:true },
+  {key:"其他資產",icon:"📦",isAsset:true },
+  {key:"信用卡", icon:"💳", isAsset:false},
+  {key:"貸款",   icon:"🏛", isAsset:false},
+  {key:"其他負債",icon:"📉",isAsset:false},
+];
+function catIcon(c){var found=CASH_CATS.find(function(x){return x.key===c;});return found?found.icon:"💰";}
+function catIsAsset(c){var found=CASH_CATS.find(function(x){return x.key===c;});return found?found.isAsset:true;}
+
 // ── utils ──────────────────────────────────────────────────────────────────
 var fmt  = function(v){return "$"+Math.round(v).toLocaleString("zh-TW");};
 var fmtU = function(v){return "$"+Number(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});};
@@ -95,7 +114,7 @@ var fmtK = function(v){return v>=10000?"$"+(v/10000).toFixed(1)+"萬":fmt(v);};
 var calcR= function(b,c){return b>0?(c-b)/b*100:0;};
 var tod  = function(){return new Date().toISOString().slice(0,10);};
 var rnd  = function(o){var r={fontFamily:RND};return Object.assign(r,o);};
-var LSKEYS={us:"inv_us",tw:"inv_tw",rl:"inv_rl",cash:"inv_cash"};
+var LSKEYS={us:"inv_us",tw:"inv_tw",rl:"inv_rl",cash:"inv_cash",ci:"inv_ci"};
 var lsGet= function(k,fb){try{var v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(e){return fb;}};
 var lsSet= function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
 
@@ -276,11 +295,15 @@ function App(){
   var _tw=useState(function(){return lsGet(LSKEYS.tw,SEED_TW);}), twData=_tw[0],setTwR=_tw[1];
   var _rl=useState(function(){return lsGet(LSKEYS.rl,SEED_RL);}), rlData=_rl[0],setRlR=_rl[1];
   var _ca=useState(function(){return lsGet(LSKEYS.cash,11964.85);}), cash=_ca[0],setCaR=_ca[1];
+  var _ci=useState(function(){return lsGet(LSKEYS.ci,SEED_CASH_ITEMS);}), cashItems=_ci[0],setCiR=_ci[1];
   // nav
   var _tb=useState("overview"),tab=_tb[0],setTab=_tb[1];
   var _ht=useState("us"),      htab=_ht[0],setHtab=_ht[1];
   var _ry=useState("2026"),    ryear=_ry[0],setRyear=_ry[1];
   var _rm=useState(null),      rmonth=_rm[0],setRmonth=_rm[1];
+  // cash item modal
+  var _cif=useState({name:"",cat:"銀行",amount:""}), cif=_cif[0],setCif=_cif[1];
+  var _cie=useState(null), ciEdit=_cie[0],setCiEdit=_cie[1];
   // us fetch
   var _ft=useState(false),fetching=_ft[0],setFetch=_ft[1];
   var _fm=useState(""),  fmsg=_fm[0],setFmsg=_fm[1];
@@ -312,6 +335,7 @@ function App(){
   function sUs(v){var n=typeof v==="function"?v(usData):v;setUsR(n);lsSet(LSKEYS.us,n);}
   function sTw(v){var n=typeof v==="function"?v(twData):v;setTwR(n);lsSet(LSKEYS.tw,n);}
   function sRl(v){var n=typeof v==="function"?v(rlData):v;setRlR(n);lsSet(LSKEYS.rl,n);}
+  function sCi(v){var n=typeof v==="function"?v(cashItems):v;setCiR(n);lsSet(LSKEYS.ci,n);}
 
   // computed stats
   var usStats=useMemo(function(){return usData.map(function(x){var c=x.bp*x.qty,v=x.cp*x.qty;return Object.assign({},x,{cost:c,val:v,pnl:v-c,roi:calcR(x.bp,x.cp)});});},[usData]);
@@ -327,6 +351,13 @@ function App(){
   var yrPnl=yrItems.reduce(function(a,x){return a+(x.s-x.p);},0);
   var yrCost=yrItems.reduce(function(a,x){return a+x.p;},0);
   var prevRl=rf.p&&rf.s&&+rf.p>0?{pnl:+rf.s-+rf.p,roi:calcR(+rf.p,+rf.s)}:null;
+
+  // net worth
+  var ciAssets=useMemo(function(){return cashItems.filter(function(x){return catIsAsset(x.cat);}).reduce(function(a,x){return a+x.amount;},0);},[cashItems]);
+  var ciLiab  =useMemo(function(){return cashItems.filter(function(x){return !catIsAsset(x.cat);}).reduce(function(a,x){return a+Math.abs(x.amount);},0);},[cashItems]);
+  var investTWD=useMemo(function(){return usT.val*UDRATE+twT.val;},[usT,twT]);
+  var totalAssets=investTWD+ciAssets;
+  var netWorth=totalAssets-ciLiab;
 
   // handlers
   var doFetch=useCallback(function(){
@@ -384,6 +415,17 @@ function App(){
     setUpdFundId(null);setUpdFundNav(null);setUpdFundVal("");
   }
 
+  function openAddCi(){setCiEdit(null);setCif({name:"",cat:"銀行",amount:""});setModal("ci");}
+  function openEditCi(x){setCiEdit(x);setCif({name:x.name,cat:x.cat,amount:""+Math.abs(x.amount)});setModal("ci");}
+  function saveCi(){
+    if(!cif.name||!cif.amount)return;
+    var isAsset=catIsAsset(cif.cat);
+    var amt=isAsset?Math.abs(+cif.amount):-Math.abs(+cif.amount);
+    var e={name:cif.name,cat:cif.cat,amount:amt};
+    ciEdit?sCi(function(p){return p.map(function(x){return x.id===ciEdit.id?Object.assign({},e,{id:x.id}):x;});}):sCi(function(p){return p.concat([Object.assign({},e,{id:"ca"+Date.now()})]);});
+    setModal(null);
+  }
+
   function openAdd(t){
     setEdit(null);setFkw("");setFres([]);setFerr("");
     if(t==="us") setUf({sym:"",qty:"",bp:"",bd:tod()});
@@ -407,6 +449,7 @@ function App(){
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
       h("div",null,h("div",{style:rnd({fontSize:21,color:T1})},"投資收益"),h("div",{style:{fontSize:10,color:T3,letterSpacing:1.2,marginTop:1}},"PORTFOLIO TRACKER")),
       h("div",{style:{display:"flex",gap:7}},
+        h("button",{onClick:openAddCi,         style:{fontSize:11,color:"#7A4A20",background:"#F0DCC0",borderRadius:16,padding:"5px 10px",fontWeight:500,border:"1px solid #D0A870"}},"帳戶 +"),
         h("button",{onClick:function(){openAdd("tw");},style:{fontSize:11,color:T2,background:DARK,borderRadius:16,padding:"5px 10px",fontWeight:500,border:"1px solid "+BDR}},"台灣 +"),
         h("button",{onClick:function(){openAdd("us");},style:{fontSize:11,color:BLU,background:BLUBG,borderRadius:16,padding:"5px 10px",fontWeight:600}},"美股 +"),
         h("button",{onClick:function(){openAdd("real");},style:{fontSize:11,color:"#fff",background:ACC,borderRadius:16,padding:"5px 10px",fontWeight:600}},"月報 +")
@@ -416,7 +459,7 @@ function App(){
 
   // ── TABS ────────────────────────────────────────────────────────────────
   var tabs=h("div",{style:{display:"flex",background:CARD,borderBottom:"1px solid "+BDR}},
-    [["overview","總覽"],["hold","持倉"],["realized","已實現"]].map(function(pr){
+    [["overview","總覽"],["hold","持倉"],["realized","已實現"],["accounts","帳戶"]].map(function(pr){
       return h("button",{key:pr[0],onClick:function(){setTab(pr[0]);},style:{flex:1,padding:"10px 0",fontSize:12,fontWeight:500,color:tab===pr[0]?ACCD:T3,borderBottom:tab===pr[0]?"2.5px solid "+ACC:"2.5px solid transparent",transition:"all .2s"}},pr[1]);
     })
   );
@@ -424,20 +467,21 @@ function App(){
   // ── OVERVIEW ────────────────────────────────────────────────────────────
   var overview=tab==="overview"&&h("div",{style:{padding:"14px 14px 0"}},
     h("div",{style:{background:ACCD,borderRadius:20,padding:"20px 18px",marginBottom:12}},
-      h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",letterSpacing:1.3,marginBottom:4}},"總資產（美股 + 台灣持倉）"),
-      h("div",{style:rnd({fontSize:30,color:"#fff",marginBottom:2})},fmtK(usT.total*UDRATE+twT.val),h("span",{style:{fontSize:12,color:"rgba(255,255,255,.5)",marginLeft:6}},"TWD")),
-      h("div",{style:{fontSize:12,color:"rgba(255,255,255,.5)",marginBottom:14}},"美股 "+fmtU(usT.total)+" USD"),
-      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
-        [["美股未實現",(usT.pnl>=0?"+":"")+fmtU(usT.pnl),usT.pnl>=0?"#C8F0D0":"#FFD0C8"],
-         ["台灣未實現",(twT.pnl>=0?"+":"")+fmtK(twT.pnl),twT.pnl>=0?"#C8F0D0":"#FFD0C8"],
-         ["已實現獲利","+"+fmtK(rlT.pnl),"#EEE8D0"]
-        ].map(function(r){return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:"rgba(255,255,255,.5)",marginBottom:2}},r[0]),h("div",{style:{fontSize:12,color:r[2],fontWeight:600}},r[1]));})
+      h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",letterSpacing:1.3,marginBottom:4}},"個人淨資產"),
+      h("div",{style:rnd({fontSize:30,color:"#fff",marginBottom:2})},fmtK(netWorth),h("span",{style:{fontSize:12,color:"rgba(255,255,255,.5)",marginLeft:6}},"TWD")),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:10}},
+        [["投資資產",fmtK(investTWD),"#C8F0D0"],["其他資產",fmtK(ciAssets),"#EEE8D0"],["負債","-"+fmtK(ciLiab),"#FFD0C8"]].map(function(r){
+          return h("div",{key:r[0]},
+            h("div",{style:{fontSize:10,color:"rgba(255,255,255,.5)",marginBottom:2}},r[0]),
+            h("div",{style:{fontSize:12,color:r[2],fontWeight:600}},r[1])
+          );
+        })
       )
     ),
     h("div",{style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:12,border:"1px solid "+BDR}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},h("div",{style:{fontSize:12,color:T2,fontWeight:600}},"🇺🇸 美股帳戶"),h(Tag,{val:usT.roi,lg:true})),
       h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}},
-        [["持倉市值",fmtU(usT.val)],["現金",fmtU(usT.cash)],["帳戶總值",fmtU(usT.total)]].map(function(r){return h("div",{key:r[0],style:{background:DARK,borderRadius:10,padding:"9px 10px"}},h("div",{style:{fontSize:10,color:T3,marginBottom:3}},r[0]),h("div",{style:{fontSize:12,color:T1,fontWeight:600}},r[1]));})
+        [["持倉市值",fmtK(usT.val*UDRATE),fmtU(usT.val)],["現金",fmtK(usT.cash*UDRATE),fmtU(usT.cash)],["帳戶總值",fmtK(usT.total*UDRATE),fmtU(usT.total)]].map(function(r){return h("div",{key:r[0],style:{background:DARK,borderRadius:10,padding:"9px 10px"}},h("div",{style:{fontSize:10,color:T3,marginBottom:3}},r[0]),h("div",{style:{fontSize:12,color:T1,fontWeight:600}},r[1]),h("div",{style:{fontSize:10,color:T3,marginTop:1}},r[2]));})
       )
     ),
     h("div",{style:{background:CARD,borderRadius:16,padding:14,marginBottom:12,border:"1px solid "+BDR}},
@@ -467,7 +511,14 @@ function App(){
     htab==="us"&&h("div",null,
       h("div",{style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:12,border:"1px solid "+BDR}},
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},
-          h("div",null,h("div",{style:{fontSize:11,color:T3}},"帳戶市值"),h("div",{style:rnd({fontSize:26,color:T1})},fmtU(usT.total)),h("div",{style:{fontSize:11,color:usT.pnl>=0?GRN:RED,fontWeight:600,marginTop:2}},(usT.pnl>=0?"+":"")+fmtU(usT.pnl)+" ("+(usT.roi>=0?"+":"")+usT.roi.toFixed(2)+"%)")),
+          h("div",null,
+            h("div",{style:{fontSize:11,color:T3}},"帳戶市值"),
+            h("div",{style:rnd({fontSize:26,color:T1})},fmtK(usT.total*UDRATE)),
+            h("div",{style:{fontSize:12,color:T3,marginTop:2}},"≈ "+fmtU(usT.total)+" USD"),
+            h("div",{style:{fontSize:11,color:usT.pnl>=0?GRN:RED,fontWeight:600,marginTop:4}},
+              (usT.pnl>=0?"+":"")+fmtK(usT.pnl*UDRATE)+" ("+(usT.roi>=0?"+":"")+usT.roi.toFixed(2)+"%)"
+            )
+          ),
           h("button",{onClick:doFetch,disabled:fetching,style:{background:fetching?DARK:BLUBG,color:fetching?T3:BLU,borderRadius:20,padding:"8px 14px",fontSize:12,fontWeight:600,border:"1.5px solid "+(fetching?BDR:BLU+"44"),display:"flex",alignItems:"center",gap:6}},h("span",{style:{display:"inline-block",animation:fetching?"spin 1s linear infinite":"none"}},"↻"),fetching?"更新中…":"更新報價")
         ),
         h("div",{style:{display:"flex",justifyContent:"space-between"}},h("div",{style:{fontSize:11,color:T3}},"現金 "+fmtU(cash)+" · "+usData.length+" 支"),h("div",{style:{fontSize:11,fontWeight:500,color:fmsg.startsWith("✓")?GRN:fmsg.startsWith("❌")?RED:T3}},fmsg||(lupd?"更新 "+lupd:"")))
@@ -646,16 +697,82 @@ function App(){
     })()
   );
 
+  // ── ACCOUNTS PAGE ─────────────────────────────────────────────────────────
+  var accounts=tab==="accounts"&&h("div",{style:{padding:14}},
+    // Net worth summary
+    h("div",{style:{background:ACCD,borderRadius:20,padding:"18px 18px",marginBottom:14}},
+      h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",letterSpacing:1.3,marginBottom:4}},"個人淨資產"),
+      h("div",{style:rnd({fontSize:32,color:"#fff",marginBottom:10})},fmtK(netWorth)),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
+        h("div",{style:{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 12px"}},
+          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",marginBottom:4}},"總資產"),
+          h("div",{style:{fontSize:16,color:"#C8F0D0",fontWeight:700}},fmtK(totalAssets)),
+          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.5)",marginTop:2}},"投資 "+fmtK(investTWD)+" + 其他 "+fmtK(ciAssets))
+        ),
+        h("div",{style:{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 12px"}},
+          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",marginBottom:4}},"總負債"),
+          h("div",{style:{fontSize:16,color:"#FFD0C8",fontWeight:700}},"-"+fmtK(ciLiab))
+        )
+      )
+    ),
+
+    // Add button
+    h("button",{onClick:openAddCi,style:{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px",borderRadius:14,background:CARD,border:"1.5px dashed #C0A060",color:"#7A4A20",fontSize:13,fontWeight:600,marginBottom:14}},
+      h("span",{style:{fontSize:20,lineHeight:1}},"＋"),"新增帳戶 / 資產 / 負債"
+    ),
+
+    // Group by asset vs liability
+    (function(){
+      var assets=cashItems.filter(function(x){return catIsAsset(x.cat);});
+      var liabs =cashItems.filter(function(x){return !catIsAsset(x.cat);});
+      function renderGroup(items,title,color){
+        if(!items.length)return null;
+        var total=items.reduce(function(a,x){return a+Math.abs(x.amount);},0);
+        return h("div",{style:{marginBottom:16}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
+            h("div",{style:{fontSize:12,color:T2,fontWeight:600}},title),
+            h("div",{style:{fontSize:13,fontWeight:700,color:color}},fmtK(total))
+          ),
+          items.map(function(item){
+            return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid "+BDR,display:"flex",alignItems:"center"}},
+              h("div",{style:{width:36,height:36,borderRadius:10,background:DARK,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginRight:12,flexShrink:0}},catIcon(item.cat)),
+              h("div",{style:{flex:1}},
+                h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),
+                h("div",{style:{fontSize:11,color:T3,marginTop:2}},item.cat)
+              ),
+              h("div",{style:{textAlign:"right",marginRight:10}},
+                h("div",{style:rnd({fontSize:16,color:color,fontWeight:700})},(catIsAsset(item.cat)?"":"-")+fmtK(Math.abs(item.amount)))
+              ),
+              h("div",{style:{display:"flex",gap:6}},
+                h("button",{onClick:function(){openEditCi(item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 10px",fontWeight:500}},"編輯"),
+                h("button",{onClick:function(){sCi(function(p){return p.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 10px",fontWeight:500}},"刪除")
+              )
+            );
+          })
+        );
+      }
+      return h("div",null,
+        renderGroup(assets,"💰 資產",GRN),
+        renderGroup(liabs,"💸 負債",RED)
+      );
+    })()
+  );
+
   // ── NAV ──────────────────────────────────────────────────────────────────
   var nav=h("div",{style:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:CARD,borderTop:"1px solid "+BDR,display:"flex",padding:"10px 0 22px",zIndex:20}},
-    [["overview","🏠","總覽"],["hold","💼","持倉"],["realized","📊","月報"]].map(function(r){return h("button",{key:r[0],onClick:function(){setTab(r[0]);},style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:tab===r[0]?ACCD:T3,fontSize:10,fontWeight:tab===r[0]?600:400}},h("span",{style:{fontSize:22}},r[1]),r[2]);})
+    [["overview","🏠","總覽"],["hold","💼","持倉"],["realized","📊","月報"],["accounts","🏛","帳戶"]].map(function(r){return h("button",{key:r[0],onClick:function(){setTab(r[0]);},style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:tab===r[0]?ACCD:T3,fontSize:10,fontWeight:tab===r[0]?600:400}},h("span",{style:{fontSize:22}},r[1]),r[2]);})
   );
 
   // ── MODAL ────────────────────────────────────────────────────────────────
   var modalEl=modal&&h("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"flex-end",zIndex:100,backdropFilter:"blur(5px)"},onClick:function(e){if(e.target===e.currentTarget)setModal(null);}},
     h("div",{style:{background:CARD,borderRadius:"22px 22px 0 0",width:"100%",maxWidth:480,margin:"0 auto",padding:"22px 18px 36px",maxHeight:"92vh",overflowY:"auto"}},
       h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
-        h("div",{style:rnd({fontSize:20,color:T1})},modal==="us"?(editObj?"編輯美股":"新增美股 🇺🇸"):modal==="tw"?(editObj?"編輯台灣持倉":"新增台灣持倉 🇹🇼"):(editObj?"編輯紀錄":"新增已實現 📊")),
+        h("div",{style:rnd({fontSize:20,color:T1})},
+          modal==="us"  ?(editObj?"編輯美股":"新增美股 🇺🇸")
+          :modal==="tw" ?(editObj?"編輯台灣持倉":"新增台灣持倉 🇹🇼")
+          :modal==="ci" ?(ciEdit?"編輯帳戶":"新增帳戶 / 資產 🏦")
+          :(editObj?"編輯紀錄":"新增已實現 📊")
+        ),
         h("button",{onClick:function(){setModal(null);},style:{fontSize:26,color:T3}},"×")
       ),
 
@@ -745,12 +862,40 @@ function App(){
         h(Inp,{label:"結算日期",value:rf.d,onChange:function(v){setRf(function(f){return Object.assign({},f,{d:v});});},type:"date"}),
         prevRl&&h("div",{style:{background:DARK,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}},h("span",{style:{fontSize:12,color:T3}},"損益預覽"),h("span",{style:{display:"flex",gap:8,alignItems:"center"}},h("span",{style:{fontSize:13,fontWeight:700,color:prevRl.pnl>=0?GRN:RED}},(prevRl.pnl>=0?"+":"")+fmt(prevRl.pnl)),h(Tag,{val:prevRl.roi}))),
         h("button",{onClick:saveRl,style:{width:"100%",background:ACCD,color:"#fff",borderRadius:14,padding:"13px",fontSize:14,fontWeight:600}},editObj?"儲存修改":"新增紀錄")
+      ),
+
+      // ── Cash item modal
+      modal==="ci"&&h("div",null,
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+          h("div",{style:{marginBottom:13,gridColumn:"1/-1"}},
+            h("label",{style:{fontSize:12,color:T2,fontWeight:500,display:"block",marginBottom:5}},"類別"),
+            h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}},
+              CASH_CATS.map(function(c){
+                return h("button",{key:c.key,onClick:function(){setCif(function(f){return Object.assign({},f,{cat:c.key});});},
+                  style:{padding:"8px 4px",borderRadius:10,fontSize:11,fontWeight:600,textAlign:"center",
+                    background:cif.cat===c.key?(c.isAsset?GRNBG:REDBG):DARK,
+                    color:cif.cat===c.key?(c.isAsset?GRN:RED):T2,
+                    border:"1.5px solid "+(cif.cat===c.key?(c.isAsset?GRN:RED):BDR)}},
+                  h("div",{style:{fontSize:16,marginBottom:2}},c.icon),
+                  c.key
+                );
+              })
+            )
+          )
+        ),
+        h(Inp,{label:"名稱",value:cif.name,onChange:function(v){setCif(function(f){return Object.assign({},f,{name:v});});},ph:cif.cat==="銀行"?"台新銀行 / 富邦帳戶":cif.cat==="信用卡"?"玉山信用卡":cif.cat==="貸款"?"房貸":""}),
+        h(Inp,{label:"金額 (TWD）",value:cif.amount,onChange:function(v){setCif(function(f){return Object.assign({},f,{amount:v});});},type:"number",ph:"500000"}),
+        cif.amount&&+cif.amount>0&&h("div",{style:{background:catIsAsset(cif.cat)?GRNBG:REDBG,borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:12,color:catIsAsset(cif.cat)?GRN:RED,fontWeight:500}},
+          catIsAsset(cif.cat)?"✓ 計入資產 ":"⚠ 計入負債 ",
+          h("b",null,fmtK(+cif.amount))
+        ),
+        h("button",{onClick:saveCi,style:{width:"100%",background:catIsAsset(cif.cat)?ACCD:RED,color:"#fff",borderRadius:14,padding:"13px",fontSize:14,fontWeight:600}},ciEdit?"儲存修改":"新增")
       )
     )
   );
 
   return h("div",{style:{fontFamily:"'Noto Sans TC',sans-serif",background:BG,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:88}},
-    header,tabs,overview,hold,realized,nav,modalEl
+    header,tabs,overview,hold,realized,accounts,nav,modalEl
   );
 }
 
