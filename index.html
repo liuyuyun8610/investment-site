@@ -101,20 +101,35 @@ var lsSet= function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e)
 
 // ── API helpers (CORS-safe, works from GitHub Pages) ──────────────────────
 
-// Fetch one price via Yahoo Finance v8 chart (more reliable than v7/quote)
+// Fetch one Yahoo Finance price with multiple proxy fallbacks
 function fetchOnePrice(sym){
-  var url="https://query2.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=1d";
-  var proxy="https://corsproxy.io/?"+encodeURIComponent(url);
-  return fetch(proxy)
-    .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
-    .then(function(d){
-      var result=d.chart&&d.chart.result&&d.chart.result[0];
-      if(!result)throw new Error("no result for "+sym);
-      var meta=result.meta;
-      var price=meta.regularMarketPrice||meta.previousClose;
-      if(!price)throw new Error("no price for "+sym);
-      return price;
-    });
+  var base="https://query2.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=1d";
+  var base2="https://query1.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=1d";
+
+  function parseYahoo(data){
+    var result=data.chart&&data.chart.result&&data.chart.result[0];
+    if(!result)throw new Error("no result");
+    var p=result.meta.regularMarketPrice||result.meta.previousClose;
+    if(!p)throw new Error("no price");
+    return p;
+  }
+
+  // Try each proxy in sequence, stop at first success
+  function tryList(list){
+    if(!list.length)return Promise.reject(new Error("all proxies failed for "+sym));
+    var item=list[0],rest=list.slice(1);
+    return fetch(item.url,item.opts||{})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(function(d){ return item.wrap?parseYahoo(JSON.parse(d.contents)):parseYahoo(d); })
+      .catch(function(){return tryList(rest);});
+  }
+
+  return tryList([
+    {url:"https://api.allorigins.win/raw?url="+encodeURIComponent(base)},
+    {url:"https://corsproxy.io/?"+encodeURIComponent(base)},
+    {url:"https://api.allorigins.win/get?url="+encodeURIComponent(base2),wrap:true},
+    {url:"https://corsproxy.io/?"+encodeURIComponent(base2)},
+  ]);
 }
 
 // US stocks: fetch all in parallel
@@ -148,13 +163,12 @@ function fetchTWStockPrices(twItems){
   });
 }
 
-// Fetch fund NAV from 鉅亨 by name (returns first match nav)
+// Fetch fund NAV from 鉅亨 by name
 function fetchFundNav(name){
   var url="https://fund.api.cnyes.com/fund/api/v1/funds?search="+encodeURIComponent(name)+"&per_page=5&page=1";
   function parseNav(data){
     var items=(data.data&&data.data.items)||[];
     if(!items.length)throw new Error("not found");
-    // find best match
     var exact=items.find(function(f){return (f.name||"").indexOf(name.slice(0,4))>=0;});
     var f=exact||items[0];
     var nav=f.nav||f.price;
@@ -164,8 +178,7 @@ function fetchFundNav(name){
     return{nav:nav,date:nd,name:f.name||name};
   }
   return fetch(url,{headers:{Accept:"application/json"}})
-    .then(function(r){return r.json();})
-    .then(parseNav)
+    .then(function(r){return r.json();}).then(parseNav)
     .catch(function(){
       var proxy="https://corsproxy.io/?"+encodeURIComponent(url);
       return fetch(proxy).then(function(r){return r.json();}).then(parseNav);
