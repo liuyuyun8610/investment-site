@@ -15,6 +15,7 @@
     input,select,button{font-family:inherit;outline:none;border:none}
     button{cursor:pointer;background:none}
     @keyframes spin{to{transform:rotate(360deg)}}
+    [data-hide] .mv{filter:blur(9px);user-select:none;cursor:pointer;transition:filter .3s}
   </style>
 </head>
 <body>
@@ -107,6 +108,23 @@ var CASH_CATS=[
 function catIcon(c){var found=CASH_CATS.find(function(x){return x.key===c;});return found?found.icon:"💰";}
 function catIsAsset(c){var found=CASH_CATS.find(function(x){return x.key===c;});return found?found.isAsset:true;}
 
+// ── 記帳分類 ────────────────────────────────────────────────────────────────
+var TX_EXP=[
+  {key:"餐飲",icon:"🍜"},{key:"交通",icon:"🚌"},{key:"購物",icon:"🛍"},
+  {key:"娛樂",icon:"🎬"},{key:"醫療",icon:"💊"},{key:"住房",icon:"🏠"},
+  {key:"教育",icon:"📚"},{key:"日用",icon:"🧴"},{key:"其他支出",icon:"⚙"},
+];
+var TX_INC=[
+  {key:"薪資",icon:"💰"},{key:"獎金",icon:"🎁"},{key:"投資收益",icon:"📈"},{key:"其他收入",icon:"💴"},
+];
+function txIcon(cat){
+  var all=TX_EXP.concat(TX_INC);
+  var f=all.find(function(x){return x.key===cat;});
+  return f?f.icon:"💳";
+}
+var SEED_TX=[];
+
+
 // ── utils ──────────────────────────────────────────────────────────────────
 var fmt  = function(v){return "$"+Math.round(v).toLocaleString("zh-TW");};
 var fmtU = function(v){return "$"+Number(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});};
@@ -114,7 +132,7 @@ var fmtK = function(v){return v>=10000?"$"+(v/10000).toFixed(1)+"萬":fmt(v);};
 var calcR= function(b,c){return b>0?(c-b)/b*100:0;};
 var tod  = function(){return new Date().toISOString().slice(0,10);};
 var rnd  = function(o){var r={fontFamily:RND};return Object.assign(r,o);};
-var LSKEYS={us:"inv_us",tw:"inv_tw",rl:"inv_rl",cash:"inv_cash",ci:"inv_ci"};
+var LSKEYS={us:"inv_us",tw:"inv_tw",rl:"inv_rl",cash:"inv_cash",ci:"inv_ci",tx:"inv_tx"};
 var lsGet= function(k,fb){try{var v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(e){return fb;}};
 var lsSet= function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
 
@@ -296,6 +314,14 @@ function App(){
   var _rl=useState(function(){return lsGet(LSKEYS.rl,SEED_RL);}), rlData=_rl[0],setRlR=_rl[1];
   var _ca=useState(function(){return lsGet(LSKEYS.cash,11964.85);}), cash=_ca[0],setCaR=_ca[1];
   var _ci=useState(function(){return lsGet(LSKEYS.ci,SEED_CASH_ITEMS);}), cashItems=_ci[0],setCiR=_ci[1];
+  var _tx=useState(function(){return lsGet(LSKEYS.tx,SEED_TX);}), txData=_tx[0],setTxR=_tx[1];
+  // UI state
+  var _sv=useState(true),  showVals=_sv[0],setShowVals=_sv[1];
+  var _at=useState("assets"),acctTab=_at[0],setAcctTab=_at[1];
+  var _txm=useState(null), txMonth=_txm[0],setTxMonth=_txm[1];
+  // tx form
+  var _tfe=useState(null),      txEdit=_tfe[0],setTxEdit=_tfe[1];
+  var _tff=useState({type:"expense",cat:"餐飲",amount:"",note:"",date:tod()}), txf=_tff[0],setTxf=_tff[1];
   // nav
   var _tb=useState("overview"),tab=_tb[0],setTab=_tb[1];
   var _ht=useState("us"),      htab=_ht[0],setHtab=_ht[1];
@@ -336,6 +362,11 @@ function App(){
   function sTw(v){var n=typeof v==="function"?v(twData):v;setTwR(n);lsSet(LSKEYS.tw,n);}
   function sRl(v){var n=typeof v==="function"?v(rlData):v;setRlR(n);lsSet(LSKEYS.rl,n);}
   function sCi(v){var n=typeof v==="function"?v(cashItems):v;setCiR(n);lsSet(LSKEYS.ci,n);}
+  function sTx(v){var n=typeof v==="function"?v(txData):v;setTxR(n);lsSet(LSKEYS.tx,n);}
+
+  // money masking helper — wraps value in a .mv span so CSS blur can hide it
+  var mv=function(val){return h("span",{className:"mv"},val);};
+
 
   // computed stats
   var usStats=useMemo(function(){return usData.map(function(x){var c=x.bp*x.qty,v=x.cp*x.qty;return Object.assign({},x,{cost:c,val:v,pnl:v-c,roi:calcR(x.bp,x.cp)});});},[usData]);
@@ -351,6 +382,33 @@ function App(){
   var yrPnl=yrItems.reduce(function(a,x){return a+(x.s-x.p);},0);
   var yrCost=yrItems.reduce(function(a,x){return a+x.p;},0);
   var prevRl=rf.p&&rf.s&&+rf.p>0?{pnl:+rf.s-+rf.p,roi:calcR(+rf.p,+rf.s)}:null;
+
+  // transaction data
+  var txMonths=useMemo(function(){
+    var map={};
+    txData.forEach(function(t){
+      var k=t.date.slice(0,7);
+      if(!map[k])map[k]={key:k,income:0,expense:0,items:[]};
+      if(t.type==="income")map[k].income+=t.amount;
+      else map[k].expense+=t.amount;
+      map[k].items.push(t);
+    });
+    return Object.values(map).sort(function(a,b){return b.key.localeCompare(a.key);});
+  },[txData]);
+
+  var txMonthData=useMemo(function(){
+    if(!txMonth)return txData.slice().sort(function(a,b){return b.date.localeCompare(a.date);});
+    return txData.filter(function(t){return t.date.startsWith(txMonth);}).sort(function(a,b){return b.date.localeCompare(a.date);});
+  },[txData,txMonth]);
+
+  var txThisMonthIncome=useMemo(function(){
+    var m=new Date().toISOString().slice(0,7);
+    return txData.filter(function(t){return t.date.startsWith(m)&&t.type==="income";}).reduce(function(a,t){return a+t.amount;},0);
+  },[txData]);
+  var txThisMonthExpense=useMemo(function(){
+    var m=new Date().toISOString().slice(0,7);
+    return txData.filter(function(t){return t.date.startsWith(m)&&t.type==="expense";}).reduce(function(a,t){return a+t.amount;},0);
+  },[txData]);
 
   // net worth
   var ciAssets=useMemo(function(){return cashItems.filter(function(x){return catIsAsset(x.cat);}).reduce(function(a,x){return a+x.amount;},0);},[cashItems]);
@@ -417,6 +475,14 @@ function App(){
 
   function openAddCi(){setCiEdit(null);setCif({name:"",cat:"銀行",amount:""});setModal("ci");}
   function openEditCi(x){setCiEdit(x);setCif({name:x.name,cat:x.cat,amount:""+Math.abs(x.amount)});setModal("ci");}
+  function openAddTx(){setTxEdit(null);setTxf({type:"expense",cat:"餐飲",amount:"",note:"",date:tod()});setModal("tx");}
+  function openEditTx(x){setTxEdit(x);setTxf({type:x.type,cat:x.cat,amount:""+x.amount,note:x.note||"",date:x.date});setModal("tx");}
+  function saveTx(){
+    if(!txf.amount||!txf.date)return;
+    var e={type:txf.type,cat:txf.cat,amount:Math.abs(+txf.amount),note:txf.note,date:txf.date};
+    txEdit?sTx(function(p){return p.map(function(x){return x.id===txEdit.id?Object.assign({},e,{id:x.id}):x;});}):sTx(function(p){return p.concat([Object.assign({},e,{id:"tx"+Date.now()})]);});
+    setModal(null);
+  }
   function saveCi(){
     if(!cif.name||!cif.amount)return;
     var isAsset=catIsAsset(cif.cat);
@@ -448,7 +514,11 @@ function App(){
   var header=h("div",{style:{background:CARD,borderBottom:"1px solid "+BDR,padding:"16px 18px 12px",position:"sticky",top:0,zIndex:20}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
       h("div",null,h("div",{style:rnd({fontSize:21,color:T1})},"投資收益"),h("div",{style:{fontSize:10,color:T3,letterSpacing:1.2,marginTop:1}},"PORTFOLIO TRACKER")),
-      h("div",{style:{display:"flex",gap:7}},
+      h("div",{style:{display:"flex",gap:7,alignItems:"center"}},
+        h("button",{onClick:function(){setShowVals(function(v){return !v;});},
+          style:{fontSize:18,color:showVals?T2:ACC,background:showVals?DARK:GRNBG,borderRadius:20,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid "+BDR,flexShrink:0},title:showVals?"隱藏金額":"顯示金額"},
+          showVals?"👁":"🙈"
+        ),
         h("button",{onClick:openAddCi,         style:{fontSize:11,color:"#7A4A20",background:"#F0DCC0",borderRadius:16,padding:"5px 10px",fontWeight:500,border:"1px solid #D0A870"}},"帳戶 +"),
         h("button",{onClick:function(){openAdd("tw");},style:{fontSize:11,color:T2,background:DARK,borderRadius:16,padding:"5px 10px",fontWeight:500,border:"1px solid "+BDR}},"台灣 +"),
         h("button",{onClick:function(){openAdd("us");},style:{fontSize:11,color:BLU,background:BLUBG,borderRadius:16,padding:"5px 10px",fontWeight:600}},"美股 +"),
@@ -468,12 +538,12 @@ function App(){
   var overview=tab==="overview"&&h("div",{style:{padding:"14px 14px 0"}},
     h("div",{style:{background:ACCD,borderRadius:20,padding:"20px 18px",marginBottom:12}},
       h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",letterSpacing:1.3,marginBottom:4}},"個人淨資產"),
-      h("div",{style:rnd({fontSize:30,color:"#fff",marginBottom:2})},fmtK(netWorth),h("span",{style:{fontSize:12,color:"rgba(255,255,255,.5)",marginLeft:6}},"TWD")),
+      h("div",{style:rnd({fontSize:30,color:"#fff",marginBottom:2})},mv(fmtK(netWorth)),h("span",{style:{fontSize:12,color:"rgba(255,255,255,.5)",marginLeft:6}},"TWD")),
       h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:10}},
         [["投資資產",fmtK(investTWD),"#C8F0D0"],["其他資產",fmtK(ciAssets),"#EEE8D0"],["負債","-"+fmtK(ciLiab),"#FFD0C8"]].map(function(r){
           return h("div",{key:r[0]},
             h("div",{style:{fontSize:10,color:"rgba(255,255,255,.5)",marginBottom:2}},r[0]),
-            h("div",{style:{fontSize:12,color:r[2],fontWeight:600}},r[1])
+            h("div",{style:{fontSize:12,color:r[2],fontWeight:600}},mv(r[1]))
           );
         })
       )
@@ -511,12 +581,12 @@ function App(){
     htab==="us"&&h("div",null,
       h("div",{style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:12,border:"1px solid "+BDR}},
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},
-          h("div",null,
+            h("div",null,
             h("div",{style:{fontSize:11,color:T3}},"帳戶市值"),
-            h("div",{style:rnd({fontSize:26,color:T1})},fmtK(usT.total*UDRATE)),
-            h("div",{style:{fontSize:12,color:T3,marginTop:2}},"≈ "+fmtU(usT.total)+" USD"),
+            h("div",{style:rnd({fontSize:26,color:T1})},mv(fmtK(usT.total*UDRATE))),
+            h("div",{style:{fontSize:12,color:T3,marginTop:2}},"≈ ",mv(fmtU(usT.total))," USD"),
             h("div",{style:{fontSize:11,color:usT.pnl>=0?GRN:RED,fontWeight:600,marginTop:4}},
-              (usT.pnl>=0?"+":"")+fmtK(usT.pnl*UDRATE)+" ("+(usT.roi>=0?"+":"")+usT.roi.toFixed(2)+"%)"
+              mv((usT.pnl>=0?"+":"")+fmtK(usT.pnl*UDRATE))," ("+(usT.roi>=0?"+":"")+usT.roi.toFixed(2)+"%)"
             )
           ),
           h("button",{onClick:doFetch,disabled:fetching,style:{background:fetching?DARK:BLUBG,color:fetching?T3:BLU,borderRadius:20,padding:"8px 14px",fontSize:12,fontWeight:600,border:"1.5px solid "+(fetching?BDR:BLU+"44"),display:"flex",alignItems:"center",gap:6}},h("span",{style:{display:"inline-block",animation:fetching?"spin 1s linear infinite":"none"}},"↻"),fetching?"更新中…":"更新報價")
@@ -548,8 +618,8 @@ function App(){
       h("div",{style:{background:DARK,borderRadius:12,padding:"11px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}},
         h("div",null,
           h("div",{style:{fontSize:11,color:T3}},"台灣 & 基金市值"),
-          h("div",{style:rnd({fontSize:20,color:T1,marginTop:3})},fmtK(twT.val)),
-          h("div",{style:{fontSize:11,color:twT.pnl>=0?GRN:RED,fontWeight:600,marginTop:2}},(twT.pnl>=0?"+":"")+fmtK(twT.pnl))
+          h("div",{style:rnd({fontSize:20,color:T1,marginTop:3})},mv(fmtK(twT.val))),
+          h("div",{style:{fontSize:11,color:twT.pnl>=0?GRN:RED,fontWeight:600,marginTop:2}},mv((twT.pnl>=0?"+":"")+fmtK(twT.pnl)))
         ),
         h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}},
           h("button",{onClick:doTWFetch,disabled:twFetch,style:{background:twFetch?DARK:GRNBG,color:twFetch?T3:GRN,borderRadius:16,padding:"7px 12px",fontSize:11,fontWeight:600,border:"1.5px solid "+(twFetch?BDR:GRN+"66"),display:"flex",alignItems:"center",gap:5}},
@@ -699,63 +769,150 @@ function App(){
 
   // ── ACCOUNTS PAGE ─────────────────────────────────────────────────────────
   var accounts=tab==="accounts"&&h("div",{style:{padding:14}},
-    // Net worth summary
+    // Net worth hero
     h("div",{style:{background:ACCD,borderRadius:20,padding:"18px 18px",marginBottom:14}},
       h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",letterSpacing:1.3,marginBottom:4}},"個人淨資產"),
-      h("div",{style:rnd({fontSize:32,color:"#fff",marginBottom:10})},fmtK(netWorth)),
+      h("div",{style:rnd({fontSize:32,color:"#fff",marginBottom:10})},mv(fmtK(netWorth))),
       h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
         h("div",{style:{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 12px"}},
           h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",marginBottom:4}},"總資產"),
-          h("div",{style:{fontSize:16,color:"#C8F0D0",fontWeight:700}},fmtK(totalAssets)),
-          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.5)",marginTop:2}},"投資 "+fmtK(investTWD)+" + 其他 "+fmtK(ciAssets))
+          h("div",{style:{fontSize:16,color:"#C8F0D0",fontWeight:700}},mv(fmtK(totalAssets))),
+          h("div",{style:{fontSize:10,color:"rgba(255,255,255,.5)",marginTop:2}},"投資 ",mv(fmtK(investTWD))," + 其他 ",mv(fmtK(ciAssets)))
         ),
         h("div",{style:{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 12px"}},
           h("div",{style:{fontSize:10,color:"rgba(255,255,255,.6)",marginBottom:4}},"總負債"),
-          h("div",{style:{fontSize:16,color:"#FFD0C8",fontWeight:700}},"-"+fmtK(ciLiab))
+          h("div",{style:{fontSize:16,color:"#FFD0C8",fontWeight:700}},mv("-"+fmtK(ciLiab)))
         )
       )
     ),
 
-    // Add button
-    h("button",{onClick:openAddCi,style:{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px",borderRadius:14,background:CARD,border:"1.5px dashed #C0A060",color:"#7A4A20",fontSize:13,fontWeight:600,marginBottom:14}},
-      h("span",{style:{fontSize:20,lineHeight:1}},"＋"),"新增帳戶 / 資產 / 負債"
+    // Sub-tabs: 資產/負債 | 記帳
+    h("div",{style:{display:"flex",background:DARK,borderRadius:12,padding:4,marginBottom:14}},
+      [["assets","🏦 資產 & 負債"],["ledger","📒 記帳"]].map(function(pr){
+        return h("button",{key:pr[0],onClick:function(){setAcctTab(pr[0]);},
+          style:{flex:1,padding:"8px 0",borderRadius:9,fontSize:12,fontWeight:600,
+            background:acctTab===pr[0]?CARD:"transparent",
+            color:acctTab===pr[0]?T1:T3,
+            transition:"all .2s"}},pr[1]);
+      })
     ),
 
-    // Group by asset vs liability
-    (function(){
-      var assets=cashItems.filter(function(x){return catIsAsset(x.cat);});
-      var liabs =cashItems.filter(function(x){return !catIsAsset(x.cat);});
-      function renderGroup(items,title,color){
-        if(!items.length)return null;
-        var total=items.reduce(function(a,x){return a+Math.abs(x.amount);},0);
-        return h("div",{style:{marginBottom:16}},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
-            h("div",{style:{fontSize:12,color:T2,fontWeight:600}},title),
-            h("div",{style:{fontSize:13,fontWeight:700,color:color}},fmtK(total))
-          ),
-          items.map(function(item){
-            return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid "+BDR,display:"flex",alignItems:"center"}},
-              h("div",{style:{width:36,height:36,borderRadius:10,background:DARK,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginRight:12,flexShrink:0}},catIcon(item.cat)),
-              h("div",{style:{flex:1}},
-                h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),
-                h("div",{style:{fontSize:11,color:T3,marginTop:2}},item.cat)
-              ),
-              h("div",{style:{textAlign:"right",marginRight:10}},
-                h("div",{style:rnd({fontSize:16,color:color,fontWeight:700})},(catIsAsset(item.cat)?"":"-")+fmtK(Math.abs(item.amount)))
-              ),
-              h("div",{style:{display:"flex",gap:6}},
-                h("button",{onClick:function(){openEditCi(item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 10px",fontWeight:500}},"編輯"),
-                h("button",{onClick:function(){sCi(function(p){return p.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 10px",fontWeight:500}},"刪除")
-              )
+    // ── 資產/負債 sub-tab ──
+    acctTab==="assets"&&h("div",null,
+      h("button",{onClick:openAddCi,style:{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",borderRadius:14,background:CARD,border:"1.5px dashed #C0A060",color:"#7A4A20",fontSize:13,fontWeight:600,marginBottom:14}},
+        h("span",{style:{fontSize:18}},"＋"),"新增帳戶 / 資產 / 負債"
+      ),
+      (function(){
+        var assets=cashItems.filter(function(x){return catIsAsset(x.cat);});
+        var liabs =cashItems.filter(function(x){return !catIsAsset(x.cat);});
+        function renderGroup(items,title,color){
+          if(!items.length)return null;
+          var total=items.reduce(function(a,x){return a+Math.abs(x.amount);},0);
+          return h("div",{style:{marginBottom:16}},
+            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
+              h("div",{style:{fontSize:12,color:T2,fontWeight:600}},title),
+              h("div",{style:{fontSize:13,fontWeight:700,color:color}},mv(fmtK(total)))
+            ),
+            items.map(function(item){
+              return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:8,border:"1px solid "+BDR,display:"flex",alignItems:"center"}},
+                h("div",{style:{width:36,height:36,borderRadius:10,background:DARK,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginRight:12,flexShrink:0}},catIcon(item.cat)),
+                h("div",{style:{flex:1}},
+                  h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),
+                  h("div",{style:{fontSize:11,color:T3,marginTop:2}},item.cat)
+                ),
+                h("div",{style:{textAlign:"right",marginRight:10}},
+                  h("div",{style:rnd({fontSize:16,color:color,fontWeight:700})},mv((catIsAsset(item.cat)?"":"-")+fmtK(Math.abs(item.amount))))
+                ),
+                h("div",{style:{display:"flex",gap:6}},
+                  h("button",{onClick:function(){openEditCi(item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 10px",fontWeight:500}},"編輯"),
+                  h("button",{onClick:function(){sCi(function(p){return p.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 10px",fontWeight:500}},"刪除")
+                )
+              );
+            })
+          );
+        }
+        return h("div",null,renderGroup(assets,"💰 資產",GRN),renderGroup(liabs,"💸 負債",RED));
+      })()
+    ),
+
+    // ── 記帳 sub-tab ──
+    acctTab==="ledger"&&h("div",null,
+      // 本月收支摘要
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}},
+        h("div",{style:{background:GRNBG,borderRadius:14,padding:"12px 10px",textAlign:"center"}},
+          h("div",{style:{fontSize:10,color:GRN,marginBottom:4}},"本月收入"),
+          h("div",{style:rnd({fontSize:16,color:GRN,fontWeight:700})},mv(fmtK(txThisMonthIncome)))
+        ),
+        h("div",{style:{background:REDBG,borderRadius:14,padding:"12px 10px",textAlign:"center"}},
+          h("div",{style:{fontSize:10,color:RED,marginBottom:4}},"本月支出"),
+          h("div",{style:rnd({fontSize:16,color:RED,fontWeight:700})},mv(fmtK(txThisMonthExpense)))
+        ),
+        h("div",{style:{background:DARK,borderRadius:14,padding:"12px 10px",textAlign:"center"}},
+          h("div",{style:{fontSize:10,color:T3,marginBottom:4}},"結餘"),
+          h("div",{style:rnd({fontSize:16,color:txThisMonthIncome-txThisMonthExpense>=0?GRN:RED,fontWeight:700})},
+            mv(fmtK(txThisMonthIncome-txThisMonthExpense)))
+        )
+      ),
+      // 新增按鈕
+      h("button",{onClick:openAddTx,style:{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",borderRadius:14,background:CARD,border:"1.5px dashed "+ACC,color:ACCD,fontSize:13,fontWeight:600,marginBottom:14}},
+        h("span",{style:{fontSize:18}},"＋"),"新增記帳"
+      ),
+      // 月份篩選
+      txMonths.length>0&&h("div",{style:{display:"flex",gap:6,overflowX:"auto",paddingBottom:10,marginBottom:4}},
+        h("button",{onClick:function(){setTxMonth(null);},style:{flexShrink:0,padding:"5px 14px",borderRadius:50,fontSize:11,fontWeight:500,background:!txMonth?ACC:CARD,color:!txMonth?"#fff":T2,border:"1px solid "+(!txMonth?ACC:BDR)}},"全部"),
+        txMonths.map(function(m){
+          return h("button",{key:m.key,onClick:function(){setTxMonth(m.key);},
+            style:{flexShrink:0,padding:"5px 14px",borderRadius:50,fontSize:11,fontWeight:500,background:txMonth===m.key?ACC:CARD,color:txMonth===m.key?"#fff":T2,border:"1px solid "+(txMonth===m.key?ACC:BDR)}},
+            m.key.slice(0,4)+"年"+Number(m.key.slice(5))+"月");
+        })
+      ),
+      // 交易列表 (grouped by date)
+      txMonthData.length===0
+        ? h("div",{style:{textAlign:"center",padding:40,color:T3,fontSize:14}},
+            h("div",{style:{fontSize:32,marginBottom:10}},"📝"),"尚無記帳紀錄"
+          )
+        : (function(){
+            var byDate={};
+            txMonthData.forEach(function(t){
+              if(!byDate[t.date])byDate[t.date]=[];
+              byDate[t.date].push(t);
+            });
+            var sortedDates=Object.keys(byDate).sort(function(a,b){return b.localeCompare(a);});
+            return h("div",null,
+              sortedDates.map(function(date){
+                var dayItems=byDate[date];
+                var dayInc=dayItems.filter(function(t){return t.type==="income";}).reduce(function(a,t){return a+t.amount;},0);
+                var dayExp=dayItems.filter(function(t){return t.type==="expense";}).reduce(function(a,t){return a+t.amount;},0);
+                return h("div",{key:date,style:{marginBottom:12}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 2px",marginBottom:6}},
+                    h("div",{style:{fontSize:12,color:T2,fontWeight:600}},date),
+                    h("div",{style:{display:"flex",gap:10,fontSize:11}},
+                      dayInc>0&&h("span",{style:{color:GRN}},mv("+"+fmtK(dayInc))),
+                      dayExp>0&&h("span",{style:{color:RED}},mv("-"+fmtK(dayExp)))
+                    )
+                  ),
+                  dayItems.map(function(item){
+                    return h("div",{key:item.id,style:{background:CARD,borderRadius:12,padding:"10px 14px",marginBottom:6,border:"1px solid "+BDR,display:"flex",alignItems:"center"}},
+                      h("div",{style:{width:34,height:34,borderRadius:10,background:item.type==="income"?GRNBG:REDBG,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,marginRight:10,flexShrink:0}},txIcon(item.cat)),
+                      h("div",{style:{flex:1}},
+                        h("div",{style:{fontSize:13,color:T1,fontWeight:500}},item.cat),
+                        item.note&&h("div",{style:{fontSize:11,color:T3,marginTop:1}},item.note)
+                      ),
+                      h("div",{style:{textAlign:"right",marginRight:8}},
+                        h("div",{style:rnd({fontSize:15,color:item.type==="income"?GRN:RED,fontWeight:700})},
+                          mv((item.type==="income"?"+":"-")+fmtK(item.amount)))
+                      ),
+                      h("div",{style:{display:"flex",gap:5}},
+                        h("button",{onClick:function(){openEditTx(item);},style:{fontSize:10,color:T2,background:DARK,borderRadius:6,padding:"3px 8px"}},"編輯"),
+                        h("button",{onClick:function(){sTx(function(p){return p.filter(function(x){return x.id!==item.id;});});},style:{fontSize:10,color:RED,background:REDBG,borderRadius:6,padding:"3px 8px"}},"刪除")
+                      )
+                    );
+                  })
+                );
+              })
             );
-          })
-        );
-      }
-      return h("div",null,
-        renderGroup(assets,"💰 資產",GRN),
-        renderGroup(liabs,"💸 負債",RED)
-      );
-    })()
+          })()
+    )
   );
 
   // ── NAV ──────────────────────────────────────────────────────────────────
@@ -771,6 +928,7 @@ function App(){
           modal==="us"  ?(editObj?"編輯美股":"新增美股 🇺🇸")
           :modal==="tw" ?(editObj?"編輯台灣持倉":"新增台灣持倉 🇹🇼")
           :modal==="ci" ?(ciEdit?"編輯帳戶":"新增帳戶 / 資產 🏦")
+          :modal==="tx" ?(txEdit?"編輯記帳":(txf.type==="expense"?"記錄支出 💸":"記錄收入 💰"))
           :(editObj?"編輯紀錄":"新增已實現 📊")
         ),
         h("button",{onClick:function(){setModal(null);},style:{fontSize:26,color:T3}},"×")
@@ -890,11 +1048,45 @@ function App(){
           h("b",null,fmtK(+cif.amount))
         ),
         h("button",{onClick:saveCi,style:{width:"100%",background:catIsAsset(cif.cat)?ACCD:RED,color:"#fff",borderRadius:14,padding:"13px",fontSize:14,fontWeight:600}},ciEdit?"儲存修改":"新增")
+      ),
+
+      // ── Transaction modal
+      modal==="tx"&&h("div",null,
+        // Type toggle
+        h("div",{style:{display:"flex",background:DARK,borderRadius:12,padding:4,marginBottom:14}},
+          [["expense","💸 支出"],["income","💰 收入"]].map(function(pr){
+            return h("button",{key:pr[0],onClick:function(){setTxf(function(f){return Object.assign({},f,{type:pr[0],cat:pr[0]==="expense"?"餐飲":"薪資"});});},
+              style:{flex:1,padding:"8px 0",borderRadius:9,fontSize:12,fontWeight:600,
+                background:txf.type===pr[0]?(pr[0]==="expense"?REDBG:GRNBG):"transparent",
+                color:txf.type===pr[0]?(pr[0]==="expense"?RED:GRN):T3,
+                transition:"all .2s"}},pr[1]);
+          })
+        ),
+        // Category grid
+        h("div",{style:{marginBottom:14}},
+          h("label",{style:{fontSize:12,color:T2,fontWeight:500,display:"block",marginBottom:8}},"分類"),
+          h("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}},
+            (txf.type==="expense"?TX_EXP:TX_INC).map(function(c){
+              return h("button",{key:c.key,onClick:function(){setTxf(function(f){return Object.assign({},f,{cat:c.key});});},
+                style:{padding:"8px 4px",borderRadius:10,fontSize:11,fontWeight:600,textAlign:"center",
+                  background:txf.cat===c.key?(txf.type==="expense"?REDBG:GRNBG):DARK,
+                  color:txf.cat===c.key?(txf.type==="expense"?RED:GRN):T2,
+                  border:"1.5px solid "+(txf.cat===c.key?(txf.type==="expense"?RED:GRN):BDR)}},
+                h("div",{style:{fontSize:16,marginBottom:2}},c.icon),
+                c.key
+              );
+            })
+          )
+        ),
+        h(Inp,{label:"金額 (TWD)",value:txf.amount,onChange:function(v){setTxf(function(f){return Object.assign({},f,{amount:v});});},type:"number",ph:"350"}),
+        h(Inp,{label:"備註（選填）",value:txf.note,onChange:function(v){setTxf(function(f){return Object.assign({},f,{note:v});});},ph:"午餐、油費…"}),
+        h(Inp,{label:"日期",value:txf.date,onChange:function(v){setTxf(function(f){return Object.assign({},f,{date:v});});},type:"date"}),
+        h("button",{onClick:saveTx,style:{width:"100%",background:txf.type==="expense"?RED:GRN,color:"#fff",borderRadius:14,padding:"13px",fontSize:14,fontWeight:600}},txEdit?"儲存修改":(txf.type==="expense"?"記錄支出":"記錄收入"))
       )
     )
   );
 
-  return h("div",{style:{fontFamily:"'Noto Sans TC',sans-serif",background:BG,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:88}},
+  return h("div",{"data-hide":showVals?undefined:"1",style:{fontFamily:"'Noto Sans TC',sans-serif",background:BG,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:88}},
     header,tabs,overview,hold,realized,accounts,nav,modalEl
   );
 }
