@@ -447,7 +447,62 @@ function App(){
       h("button",{onClick:function(){setRmonth(null);},style:{flexShrink:0,padding:"5px 14px",borderRadius:50,fontSize:11,fontWeight:500,background:!rmonth?ACC:CARD,color:!rmonth?"#fff":T2,border:"1px solid "+(!rmonth?ACC:BDR)}},"全部"),
       MOS.filter(function(m){return yrItems.some(function(x){return x.d.slice(5,7)===m;});}).map(function(m){return h("button",{key:m,onClick:function(){setRmonth(m);},style:{flexShrink:0,padding:"5px 14px",borderRadius:50,fontSize:11,fontWeight:500,background:rmonth===m?ACC:CARD,color:rmonth===m?"#fff":T2,border:"1px solid "+(rmonth===m?ACC:BDR)}},+m+"月");})
     ),
-    filtRl.map(function(item){var p=item.s-item.p,r2=item.p>0?p/item.p*100:0;return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:10,border:"1px solid "+BDR}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},h("div",{style:{flex:1,paddingRight:8}},h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),h("div",{style:{display:"flex",gap:6,marginTop:4}},h(Badge,{cat:item.cat}),h("span",{style:{fontSize:10,color:T3}},"結算 "+item.d))),h(Tag,{val:r2})),h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",background:DARK,borderRadius:10,padding:"9px 10px",marginBottom:10,gap:4}},[["投入本金",fmt(item.p)],["賣出市值",fmt(item.s)],["損益",(p>=0?"+":"")+fmt(p)]].map(function(r,i){return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:T3,marginBottom:2}},r[0]),h("div",{style:{fontSize:11,fontWeight:i===2?700:500,color:i===2?(p>=0?GRN:RED):T1}},r[1]));})),h("div",{style:{display:"flex",justifyContent:"flex-end",gap:8}},h("button",{onClick:function(){openEdit("real",item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 12px",fontWeight:500}},"編輯"),h("button",{onClick:function(){sRl(function(p2){return p2.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 12px",fontWeight:500}},"刪除")));})
+    // ── 依月份分組顯示 ──
+    (function(){
+      // 如果有篩選月份，先顯示該月摘要再列明細
+      if(rmonth){
+        var mRows=filtRl;
+        var mPnl=mRows.reduce(function(a,x){return a+(x.s-x.p);},0);
+        var mCost=mRows.reduce(function(a,x){return a+x.p;},0);
+        var mRoi=mCost>0?mPnl/mCost*100:0;
+        return h("div",null,
+          // 月份摘要卡
+          h("div",{style:{background:mPnl>=0?GRNBG:REDBG,borderRadius:14,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+            h("div",null,
+              h("div",{style:{fontSize:11,color:mPnl>=0?GRN:RED,fontWeight:600,marginBottom:3}},ryear+"年 "+Number(rmonth)+"月 結算"),
+              h("div",{style:{fontSize:11,color:T2}},mRows.length+" 筆 · 投入 "+fmtK(mCost))
+            ),
+            h("div",{style:{textAlign:"right"}},
+              h("div",{style:rnd({fontSize:22,color:mPnl>=0?GRN:RED,fontWeight:700})},(mPnl>=0?"+":"")+fmtK(mPnl)),
+              h("div",{style:{fontSize:12,color:mPnl>=0?GRN:RED,fontWeight:600,marginTop:2}},(mRoi>=0?"+":"")+mRoi.toFixed(1)+"%")
+            )
+          ),
+          mRows.map(function(item){var p=item.s-item.p,r2=item.p>0?p/item.p*100:0;return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:10,border:"1px solid "+BDR}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},h("div",{style:{flex:1,paddingRight:8}},h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),h("div",{style:{display:"flex",gap:6,marginTop:4}},h(Badge,{cat:item.cat}),h("span",{style:{fontSize:10,color:T3}},"結算 "+item.d))),h(Tag,{val:r2})),h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",background:DARK,borderRadius:10,padding:"9px 10px",marginBottom:10,gap:4}},[["投入本金",fmt(item.p)],["賣出市值",fmt(item.s)],["損益",(p>=0?"+":"")+fmt(p)]].map(function(r,i){return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:T3,marginBottom:2}},r[0]),h("div",{style:{fontSize:11,fontWeight:i===2?700:500,color:i===2?(p>=0?GRN:RED):T1}},r[1]));})),h("div",{style:{display:"flex",justifyContent:"flex-end",gap:8}},h("button",{onClick:function(){openEdit("real",item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 12px",fontWeight:500}},"編輯"),h("button",{onClick:function(){sRl(function(p2){return p2.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 12px",fontWeight:500}},"刪除")));})
+        );
+      }
+      // 全部：依月份分組
+      var groups={};
+      filtRl.forEach(function(item){
+        var key=item.d.slice(0,7); // "2026-02"
+        if(!groups[key])groups[key]=[];
+        groups[key].push(item);
+      });
+      var sortedKeys=Object.keys(groups).sort(function(a,b){return b.localeCompare(a);});
+      return h("div",null,
+        sortedKeys.map(function(key){
+          var rows=groups[key];
+          var gPnl=rows.reduce(function(a,x){return a+(x.s-x.p);},0);
+          var gCost=rows.reduce(function(a,x){return a+x.p;},0);
+          var gRoi=gCost>0?gPnl/gCost*100:0;
+          var yr=key.slice(0,4), mo=Number(key.slice(5,7));
+          return h("div",{key:key,style:{marginBottom:6}},
+            // 月份摘要標頭
+            h("div",{style:{background:gPnl>=0?GRNBG:REDBG,borderRadius:14,padding:"12px 16px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+              h("div",null,
+                h("div",{style:{fontSize:12,color:gPnl>=0?GRN:RED,fontWeight:700,marginBottom:3}},yr+"年 "+mo+"月 結算"),
+                h("div",{style:{fontSize:11,color:T2}},rows.length+" 筆 · 投入 "+fmtK(gCost))
+              ),
+              h("div",{style:{textAlign:"right"}},
+                h("div",{style:rnd({fontSize:20,color:gPnl>=0?GRN:RED,fontWeight:700})},(gPnl>=0?"+":"")+fmtK(gPnl)),
+                h("div",{style:{fontSize:12,color:gPnl>=0?GRN:RED,marginTop:2}},(gRoi>=0?"+":"")+gRoi.toFixed(1)+"%")
+              )
+            ),
+            // 該月各筆明細
+            rows.map(function(item){var p=item.s-item.p,r2=item.p>0?p/item.p*100:0;return h("div",{key:item.id,style:{background:CARD,borderRadius:14,padding:"12px 14px",marginBottom:10,border:"1px solid "+BDR}},h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}},h("div",{style:{flex:1,paddingRight:8}},h("div",{style:{fontSize:14,color:T1,fontWeight:600}},item.name),h("div",{style:{display:"flex",gap:6,marginTop:4}},h(Badge,{cat:item.cat}),h("span",{style:{fontSize:10,color:T3}},"結算 "+item.d))),h(Tag,{val:r2})),h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",background:DARK,borderRadius:10,padding:"9px 10px",marginBottom:10,gap:4}},[["投入本金",fmt(item.p)],["賣出市值",fmt(item.s)],["損益",(p>=0?"+":"")+fmt(p)]].map(function(r,i){return h("div",{key:r[0]},h("div",{style:{fontSize:10,color:T3,marginBottom:2}},r[0]),h("div",{style:{fontSize:11,fontWeight:i===2?700:500,color:i===2?(p>=0?GRN:RED):T1}},r[1]));})),h("div",{style:{display:"flex",justifyContent:"flex-end",gap:8}},h("button",{onClick:function(){openEdit("real",item);},style:{fontSize:11,color:T2,background:DARK,borderRadius:8,padding:"4px 12px",fontWeight:500}},"編輯"),h("button",{onClick:function(){sRl(function(p2){return p2.filter(function(x){return x.id!==item.id;});});},style:{fontSize:11,color:RED,background:REDBG,borderRadius:8,padding:"4px 12px",fontWeight:500}},"刪除")));})
+          );
+        })
+      );
+    })()
   );
 
   // ── NAV ──────────────────────────────────────────────────────────────────
