@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet"/>
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html,body,#root{height:100%}
@@ -24,7 +25,7 @@
 (function(){
 "use strict";
 var _R=React;
-var h=_R.createElement,useState=_R.useState,useMemo=_R.useMemo,useCallback=_R.useCallback,Fragment=_R.Fragment;
+var h=_R.createElement,useState=_R.useState,useMemo=_R.useMemo,useCallback=_R.useCallback,useEffect=_R.useEffect,Fragment=_R.Fragment;
 
 // ── palette ────────────────────────────────────────────────────────────────
 var BG="#F5EEE2",CARD="#FEFAF2",DARK="#EDE4D0",BDR="#DDD0B8";
@@ -135,6 +136,26 @@ var rnd  = function(o){var r={fontFamily:RND};return Object.assign(r,o);};
 var LSKEYS={us:"inv_us",tw:"inv_tw",rl:"inv_rl",cash:"inv_cash",ci:"inv_ci",tx:"inv_tx"};
 var lsGet= function(k,fb){try{var v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch(e){return fb;}};
 var lsSet= function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
+
+// ── Supabase cloud sync (cross-device realtime) ──────────────────────────
+// localStorage stays as the warm cache so the first paint is instant; the
+// authoritative copy lives in Supabase and is replicated to every open tab
+// via the realtime subscription set up in App's useEffect.
+var SB_URL="https://kwtozldimwidbkemrdgg.supabase.co";
+var SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3dG96bGRpbXdpZGJrZW1yZGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDcyNTcsImV4cCI6MjA5MTcyMzI1N30.OK8qXUNSDEeCakMHyV9_fJZBGMtpE_wANNCzWvkBYuc";
+var SB=(window.supabase&&window.supabase.createClient)?window.supabase.createClient(SB_URL,SB_KEY):null;
+function cloudLoad(k){
+  if(!SB)return Promise.resolve(null);
+  return SB.from("invest_state").select("value").eq("key",k).maybeSingle().then(function(r){
+    if(r.error)return null;
+    return r.data?r.data.value:null;
+  }).catch(function(){return null;});
+}
+function cloudSave(k,v){
+  lsSet(k,v);
+  if(!SB)return;
+  SB.from("invest_state").upsert({key:k,value:v,updated_at:new Date().toISOString()},{onConflict:"key"}).then(function(){},function(){});
+}
 
 // ── API helpers (CORS-safe, works from GitHub Pages) ──────────────────────
 
@@ -358,11 +379,43 @@ function App(){
   var _ufv=useState(""),    updFundVal=_ufv[0],setUpdFundVal=_ufv[1];
 
   // persist wrappers
-  function sUs(v){var n=typeof v==="function"?v(usData):v;setUsR(n);lsSet(LSKEYS.us,n);}
-  function sTw(v){var n=typeof v==="function"?v(twData):v;setTwR(n);lsSet(LSKEYS.tw,n);}
-  function sRl(v){var n=typeof v==="function"?v(rlData):v;setRlR(n);lsSet(LSKEYS.rl,n);}
-  function sCi(v){var n=typeof v==="function"?v(cashItems):v;setCiR(n);lsSet(LSKEYS.ci,n);}
-  function sTx(v){var n=typeof v==="function"?v(txData):v;setTxR(n);lsSet(LSKEYS.tx,n);}
+  function sUs(v){var n=typeof v==="function"?v(usData):v;setUsR(n);cloudSave(LSKEYS.us,n);}
+  function sTw(v){var n=typeof v==="function"?v(twData):v;setTwR(n);cloudSave(LSKEYS.tw,n);}
+  function sRl(v){var n=typeof v==="function"?v(rlData):v;setRlR(n);cloudSave(LSKEYS.rl,n);}
+  function sCi(v){var n=typeof v==="function"?v(cashItems):v;setCiR(n);cloudSave(LSKEYS.ci,n);}
+  function sTx(v){var n=typeof v==="function"?v(txData):v;setTxR(n);cloudSave(LSKEYS.tx,n);}
+
+  // Bootstrap state from cloud on mount + subscribe to realtime so changes
+  // made on another device (e.g. phone) appear here without a refresh.
+  useEffect(function(){
+    if(!SB)return;
+    Promise.all([
+      cloudLoad(LSKEYS.us),cloudLoad(LSKEYS.tw),cloudLoad(LSKEYS.rl),
+      cloudLoad(LSKEYS.cash),cloudLoad(LSKEYS.ci),cloudLoad(LSKEYS.tx),
+    ]).then(function(rs){
+      if(rs[0]!==null){setUsR(rs[0]);lsSet(LSKEYS.us,rs[0]);}
+      if(rs[1]!==null){setTwR(rs[1]);lsSet(LSKEYS.tw,rs[1]);}
+      if(rs[2]!==null){setRlR(rs[2]);lsSet(LSKEYS.rl,rs[2]);}
+      if(rs[3]!==null){setCaR(rs[3]);lsSet(LSKEYS.cash,rs[3]);}
+      if(rs[4]!==null){setCiR(rs[4]);lsSet(LSKEYS.ci,rs[4]);}
+      if(rs[5]!==null){setTxR(rs[5]);lsSet(LSKEYS.tx,rs[5]);}
+    });
+    var ch=SB.channel("invest_state_changes")
+      .on("postgres_changes",{event:"*",schema:"public",table:"invest_state"},function(p){
+        var row=p.new||p.old; if(!row||!row.key)return;
+        if(!p.new)return; // ignore deletes
+        var v=p.new.value, k=row.key;
+        if(k===LSKEYS.us){setUsR(v);lsSet(k,v);}
+        else if(k===LSKEYS.tw){setTwR(v);lsSet(k,v);}
+        else if(k===LSKEYS.rl){setRlR(v);lsSet(k,v);}
+        else if(k===LSKEYS.cash){setCaR(v);lsSet(k,v);}
+        else if(k===LSKEYS.ci){setCiR(v);lsSet(k,v);}
+        else if(k===LSKEYS.tx){setTxR(v);lsSet(k,v);}
+      })
+      .subscribe();
+    return function(){SB.removeChannel(ch);};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   // money masking helper — wraps value in a .mv span so CSS blur can hide it
   var mv=function(val){return h("span",{className:"mv"},val);};
