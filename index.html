@@ -17,7 +17,13 @@
     button{cursor:pointer;background:none}
     @keyframes spin{to{transform:rotate(360deg)}}
     [data-hide] .mv{filter:blur(9px);user-select:none;cursor:pointer;transition:filter .3s}
-  </style>
+    .app-shell{max-width:480px}
+    .bottom-nav{max-width:480px}
+    @media (min-width:768px){
+      .app-shell{max-width:900px}
+      .bottom-nav{max-width:900px}
+    }
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -969,7 +975,7 @@ function App(){
   );
 
   // ── NAV ──────────────────────────────────────────────────────────────────
-  var nav=h("div",{style:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:CARD,borderTop:"1px solid "+BDR,display:"flex",padding:"10px 0 22px",zIndex:20}},
+  var nav=h("div",{className:"bottom-nav",style:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",background:CARD,borderTop:"1px solid "+BDR,display:"flex",padding:"10px 0 22px",zIndex:20}},
     [["overview","🏠","總覽"],["hold","💼","持倉"],["realized","📊","月報"],["accounts","🏛","帳戶"]].map(function(r){return h("button",{key:r[0],onClick:function(){setTab(r[0]);},style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:tab===r[0]?ACCD:T3,fontSize:10,fontWeight:tab===r[0]?600:400}},h("span",{style:{fontSize:22}},r[1]),r[2]);})
   );
 
@@ -1139,7 +1145,7 @@ function App(){
     )
   );
 
-  return h("div",{"data-hide":showVals?undefined:"1",style:{fontFamily:"'Noto Sans TC',sans-serif",background:BG,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:88}},
+  return h("div",{"data-hide":showVals?undefined:"1",className:"app-shell",style:{fontFamily:"'Noto Sans TC',sans-serif",background:BG,minHeight:"100vh",margin:"0 auto",paddingBottom:88}},
     header,tabs,overview,hold,realized,accounts,nav,modalEl
   );
 }
